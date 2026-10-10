@@ -58,6 +58,15 @@ export const ConfigSchema = z.object({
   SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
   AUDIO_BUCKET: optionalString,
 
+  RECORD_STORE: z.enum(["local", "dynamo"]).default("local"),
+  RECORDS_DB_FILE: z.string().default("data/records.db"),
+  AUDIO_STORE: z.enum(["local", "s3"]).default("local"),
+  AUDIO_DIR: z.string().default("data/audio"),
+  AUDIT_SINK: z.enum(["file", "console", "dynamo"]).default("file"),
+  AUDIT_FILE: z.string().default("data/audit/receipts.jsonl"),
+  AUDIT_TABLE: z.string().default("discharge_audit"),
+  SWEEP_INTERVAL_MS: int(60_000),
+
   EMAIL_TRANSPORT: z.enum(["console", "smtp", "ses"]).default("console"),
   EMAIL_FROM: z.string().default("DischargeAI <noreply@example.test>"),
   SMTP_URL: optionalString,

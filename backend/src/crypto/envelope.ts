@@ -45,3 +45,19 @@ export function sealJson(key: Buffer, value: unknown, aad: Buffer): Sealed {
 export function openJson<T = unknown>(key: Buffer, sealed: Sealed, aad: Buffer): T {
   return JSON.parse(open(key, sealed, aad).toString("utf8")) as T;
 }
+
+/** The storable form of a sealed payload: base64 strings, the same in SQLite and DynamoDB. */
+export interface SealedJson {
+  ciphertext: string;
+  iv: string;
+  tag: string;
+}
+
+export function sealToJson(key: Buffer, value: unknown, aad: Buffer): SealedJson {
+  const s = sealJson(key, value, aad);
+  return { ciphertext: s.ciphertext.toString("base64"), iv: s.iv.toString("base64"), tag: s.tag.toString("base64") };
+}
+
+export function openFromJson<T = unknown>(key: Buffer, sealed: SealedJson, aad: Buffer): T {
+  return openJson<T>(key, { ciphertext: Buffer.from(sealed.ciphertext, "base64"), iv: Buffer.from(sealed.iv, "base64"), tag: Buffer.from(sealed.tag, "base64") }, aad);
+}
