@@ -1,22 +1,24 @@
+import { loadRuntimeEnv } from "../bootstrap.js";
 import { loadConfig } from "../config.js";
-import { loadDotEnv } from "../dotenv.js";
+import { splitUid } from "../docstore/types.js";
 import { createAuditSink, newReceipt, type AuditSink, type DeletionReceipt } from "./receipts.js";
 
 /**
- * Lambda handler for the DynamoDB Stream of `discharge_records` ("day 30, auto-delete -> Audit log").
- * TTL deletions arrive as REMOVE records whose `userIdentity` is
+ * Lambda handler for the DynamoDB Stream of `discharge-summaries` ("day 30, auto-delete -> Audit
+ * log"). TTL deletions arrive as REMOVE records whose `userIdentity` is
  * `{ type: "Service", principalId: "dynamodb.amazonaws.com" }`; nothing else is a TTL deletion, so
  * nothing else is recorded. Enable the stream with StreamViewType OLD_IMAGE (or NEW_AND_OLD_IMAGES)
- * so the receipt can carry the `expiresAt` the item had.
- * IAM: dynamodb:DescribeStream, GetRecords, GetShardIterator, ListStreams on the stream, plus the
- * audit sink's permissions. Env: AUDIT_SINK=dynamo AUDIT_TABLE=discharge_audit (or console for CloudWatch only).
+ * so the receipt can carry the `expiresAt` the item had. Keys are `{ uid: { S } }` (DYNAMO_PK);
+ * receipt# items are skipped. IAM: dynamodb:DescribeStream, GetRecords, GetShardIterator,
+ * ListStreams on the stream, plus the sink's permissions (AUDIT_SINK=sql with the RDS settings from
+ * Secrets Manager, or dynamo, file, console).
  */
 export interface DynamoStreamRecord {
   eventName?: "INSERT" | "MODIFY" | "REMOVE";
   userIdentity?: { type?: string; principalId?: string };
   dynamodb?: {
-    Keys?: { tokenHash?: { S?: string } };
-    OldImage?: { expiresAt?: { N?: string }; audioKey?: { S?: string } };
+    Keys?: Record<string, { S?: string }>;
+    OldImage?: { expiresAt?: { N?: string }; sk?: { S?: string }; pk?: { S?: string } };
     ApproximateCreationDateTime?: number;
   };
 }
@@ -29,36 +31,32 @@ export function isTtlDeletion(record: DynamoStreamRecord): boolean {
   return record.eventName === "REMOVE" && record.userIdentity?.type === "Service" && record.userIdentity?.principalId === "dynamodb.amazonaws.com";
 }
 
-export function receiptsFromStreamEvent(event: DynamoStreamEvent, now: () => Date = () => new Date()): DeletionReceipt[] {
+export function receiptsFromStreamEvent(event: DynamoStreamEvent, now: () => Date = () => new Date(), keyAttribute = "uid"): DeletionReceipt[] {
   const out: DeletionReceipt[] = [];
   for (const r of event.Records ?? []) {
     if (!isTtlDeletion(r)) continue;
-    const tokenHash = r.dynamodb?.Keys?.tokenHash?.S;
-    if (!tokenHash) continue;
+    const uid = r.dynamodb?.Keys?.[keyAttribute]?.S;
+    if (!uid) continue;
+    const parts = splitUid(uid);
+    if (!parts) continue; // receipt# or foreign items never carry a link hash
     const ttl = r.dynamodb?.OldImage?.expiresAt?.N;
-    out.push(
-      newReceipt({
-        tokenHash,
-        deleted: "record",
-        mechanism: "dynamodb_ttl",
-        source: "dynamodb-stream",
-        expiresAt: ttl ? Number(ttl) : undefined,
-        at: now().toISOString(),
-      }),
-    );
+    out.push(newReceipt({ linkIdHash: parts.pk, uid, deleted: "record", mechanism: "dynamodb_ttl", source: "dynamodb-stream", expiresAt: ttl ? Number(ttl) : undefined, at: now().toISOString() }));
   }
   return out;
 }
 
 let sink: AuditSink | undefined;
+let keyAttribute = "uid";
 
 export async function handler(event: DynamoStreamEvent, auditSink?: AuditSink): Promise<{ receipts: number }> {
   if (!auditSink && !sink) {
-    loadDotEnv();
-    sink = await createAuditSink(loadConfig());
+    const { env } = await loadRuntimeEnv();
+    const config = loadConfig(env);
+    keyAttribute = config.DYNAMO_PK;
+    sink = await createAuditSink(config);
   }
   const target = auditSink ?? sink!;
-  const receipts = receiptsFromStreamEvent(event);
+  const receipts = receiptsFromStreamEvent(event, undefined, auditSink ? "uid" : keyAttribute);
   for (const r of receipts) await target.append(r);
   return { receipts: receipts.length };
 }

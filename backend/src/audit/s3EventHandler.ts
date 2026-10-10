@@ -1,14 +1,15 @@
+import { loadRuntimeEnv } from "../bootstrap.js";
 import { loadConfig } from "../config.js";
-import { loadDotEnv } from "../dotenv.js";
+import { AUDIO_KEY_RE } from "../data/audio.js";
 import { createAuditSink, newReceipt, type AuditSink, type DeletionReceipt } from "./receipts.js";
 
 /**
  * Lambda handler for S3 event notifications on the audio bucket ("day 30, lifecycle expire ->
  * Audit log"). Lifecycle expirations arrive as `s3:LifecycleExpiration:Delete` (and
  * `s3:LifecycleExpiration:DeleteMarkerCreated` on versioned buckets); object keys are
- * `<tokenHash>.<ext>` for audio and `transcripts/<job>.json` for Transcribe output, so the
- * receipt carries the tokenHash when the key has one and never any content.
- * IAM: the audit sink's permissions. Env: same as streamHandler.ts.
+ * `<linkIdHash>.<ext>` for audio and `transcripts/<job>.json` for Transcribe output, so the
+ * receipt carries the link hash when the key has one and never any content.
+ * IAM: the sink's permissions. Env: same as streamHandler.ts.
  */
 export interface S3EventRecord {
   eventName?: string;
@@ -20,10 +21,8 @@ export interface S3Event {
   Records?: S3EventRecord[];
 }
 
-const AUDIO_KEY = /^([0-9a-f]{64})\.[a-z0-9]{2,5}$/;
-
 export function isLifecycleExpiration(record: S3EventRecord): boolean {
-  return /^(ObjectRemoved:|s3:)?LifecycleExpiration:/.test(record.eventName ?? "") || /LifecycleExpiration/.test(record.eventName ?? "");
+  return /LifecycleExpiration/.test(record.eventName ?? "");
 }
 
 export function receiptsFromS3Event(event: S3Event, now: () => Date = () => new Date()): DeletionReceipt[] {
@@ -32,10 +31,10 @@ export function receiptsFromS3Event(event: S3Event, now: () => Date = () => new 
     if (!isLifecycleExpiration(r)) continue;
     const key = decodeURIComponent((r.s3?.object?.key ?? "").replace(/\+/g, " "));
     if (!key) continue;
-    const m = AUDIO_KEY.exec(key);
+    const m = AUDIO_KEY_RE.exec(key);
     out.push(
       newReceipt({
-        tokenHash: m ? m[1] : "-",
+        linkIdHash: m ? m[1] : "-",
         deleted: m ? "audio" : key.startsWith("transcripts/") ? "transcript" : "audio",
         mechanism: "s3_lifecycle",
         source: "s3-event",
@@ -51,8 +50,8 @@ let sink: AuditSink | undefined;
 
 export async function handler(event: S3Event, auditSink?: AuditSink): Promise<{ receipts: number }> {
   if (!auditSink && !sink) {
-    loadDotEnv();
-    sink = await createAuditSink(loadConfig());
+    const { env } = await loadRuntimeEnv();
+    sink = await createAuditSink(loadConfig(env));
   }
   const target = auditSink ?? sink!;
   const receipts = receiptsFromS3Event(event);

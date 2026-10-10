@@ -36,8 +36,11 @@ if (linkArg) {
   const link = await ctx.links.getByHash(hash);
   heading = `link ${hash.slice(0, 8)}: status=${link?.status ?? "unknown"} keyDestroyed=${link ? link.encKey === null : "?"} expiresAt=${link?.expiresAt ?? "?"} languages=${JSON.stringify(link?.languages ?? [])}`;
 } else if (receiptsOnly) {
-  entries = await ctx.audit.listByEvent("deletion.receipt");
-  heading = `deletion receipts (${entries.length})`;
+  const receipts = await ctx.receipts.list();
+  await ctx.close();
+  console.log(asJson ? JSON.stringify({ sink: ctx.receipts.name, receipts }, null, 2) : `deletion receipts (${receipts.length}) from the ${ctx.receipts.name} sink`);
+  if (!asJson) for (const r of receipts) console.log(`  ${r.at}  ${r.deleted.padEnd(7)}  ${r.mechanism.padEnd(14)}  ${r.linkIdHash.slice(0, 8)}  ${r.uid ?? r.key ?? ""}${r.expiresAt ? `  expiresAt=${r.expiresAt}` : ""}`);
+  process.exit(0);
 } else {
   entries = await ctx.audit.listRecent(200);
   heading = `latest ${entries.length} events`;

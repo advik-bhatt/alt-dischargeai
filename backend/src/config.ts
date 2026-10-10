@@ -73,14 +73,15 @@ export const ConfigSchema = z.object({
 
   SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
-  AUDIO_BUCKET: optionalString,
 
-  AUDIO_STORE: z.enum(["local", "s3"]).default("local"),
+  /** auto: the S3 bucket when Secrets Manager resolved (and the bucket answers), else the local twin. */
+  AUDIO_STORE: z.enum(["auto", "local", "s3"]).default("auto"),
+  /** The team's audio bucket ("EMR audio"); it already carries the 30-day lifecycle rule. */
+  AUDIO_BUCKET: z.string().default("emraudio-rh"),
   AUDIO_DIR: z.string().default("data/audio"),
-  AUDIT_SINK: z.enum(["file", "console", "dynamo"]).default("file"),
+  /** Where deletion receipts go: sql (audit_log, default), file, console, dynamo (receipt# items in the table). */
+  AUDIT_SINK: z.enum(["sql", "file", "console", "dynamo"]).default("sql"),
   AUDIT_FILE: z.string().default("data/audit/receipts.jsonl"),
-  AUDIT_TABLE: z.string().default("discharge_audit"),
-  SWEEP_INTERVAL_MS: int(60_000),
 
   EMAIL_TRANSPORT: z.enum(["console", "smtp", "ses"]).default("console"),
   EMAIL_FROM: z.string().default("DischargeAI <noreply@example.test>"),

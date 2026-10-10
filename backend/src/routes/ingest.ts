@@ -4,6 +4,7 @@ import { LINK_TTL_MS } from "../config.js";
 import type { AppContext } from "../context.js";
 import { newDataKey } from "../crypto/envelope.js";
 import { hashLinkId, hashPrefix, newLinkId } from "../crypto/linkId.js";
+import { audioKeyFor } from "../data/audio.js";
 import type { RawDocument } from "../docstore/documents.js";
 import { SK } from "../docstore/types.js";
 import { badRequest, notFound } from "../errors.js";
@@ -57,6 +58,14 @@ export function ingestRouter(ctx: AppContext): Router {
     const kind = pdf ? "pdf" : audio ? "audio" : "text";
     const encKey = newDataKey();
 
+    // Diagram: "store audio" first. The clip lands in the audio bucket (S3, SSE) under the link hash;
+    // the lifecycle rule and the purge job both delete it on day 30.
+    let audioKey: string | undefined;
+    if (audio) {
+      audioKey = audioKeyFor(linkIdHash, audio.mimetype, audio.originalname);
+      await ctx.audio.put({ key: audioKey, body: audio.buffer, contentType: audio.mimetype });
+    }
+
     await ctx.links.create({
       linkIdHash,
       patientId: patient.id,
@@ -65,6 +74,7 @@ export function ingestRouter(ctx: AppContext): Router {
       keyVersion: ctx.config.KEY_VERSION,
       encKey,
       language,
+      audioKey,
     });
     // Pasted text is stored raw before the 202; PDF text and transcripts are stored once extracted.
     if (kind === "text") {
@@ -75,9 +85,9 @@ export function ingestRouter(ctx: AppContext): Router {
       linkIdHash,
       inputKind: kind,
       now: ctx.clock.nowIso(),
-      meta: { inputBytes: pdf?.size ?? audio?.size ?? Buffer.byteLength(text, "utf8"), mimeType: pdf?.mimetype ?? audio?.mimetype, language },
+      meta: { inputBytes: pdf?.size ?? audio?.size ?? Buffer.byteLength(text, "utf8"), mimeType: pdf?.mimetype ?? audio?.mimetype, language, ...(audioKey ? { audioStore: ctx.audio.name } : {}) },
     });
-    await ctx.audit.append({ event: "link.created", linkIdHash, actor: "provider", at: ctx.clock.nowIso(), details: { patientId: patient.id, jobId: job.id, inputKind: kind, language, expiresAt: expiresAt.toISOString() } });
+    await ctx.audit.append({ event: "link.created", linkIdHash, actor: "provider", at: ctx.clock.nowIso(), details: { patientId: patient.id, jobId: job.id, inputKind: kind, language, expiresAt: expiresAt.toISOString(), audioStored: !!audioKey } });
     ctx.log.info({ jobId: job.id, link: hashPrefix(linkIdHash), inputKind: kind, language }, "ingest accepted");
 
     res.status(202).json({

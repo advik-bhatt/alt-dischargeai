@@ -1,5 +1,7 @@
+import { createAuditSink, type AuditSink } from "./audit/receipts.js";
 import { Clock } from "./clock.js";
 import { LINK_TTL_DAYS, loadConfig, type Config } from "./config.js";
+import { createAudioStore, resolveAudioStore, type AudioStatus, type AudioStore } from "./data/audio.js";
 import { migrate } from "./db/migrate.js";
 import { openDb, type Db } from "./db/index.js";
 import { AuditRepo } from "./db/repos/audit.js";
@@ -36,6 +38,10 @@ export interface AppContext {
   audit: AuditRepo;
   docStore: DocumentStore;
   secureDocs: SecureDocs;
+  audio: AudioStore;
+  audioStatus: AudioStatus;
+  /** Deletion receipts sink (sql by default). */
+  receipts: AuditSink;
   simplifier: Simplifier;
   translator: Translator;
   speechToText: SpeechToText;
@@ -83,6 +89,8 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const docStore = createDocumentStore(config, db, resolveDocStore(config, secrets.source === "secrets-manager"));
   log.info({ docStore: docStore.describe }, "document store");
   const secureDocs = new SecureDocs(docStore);
+  const { store: audio, status: audioStatus } = await createAudioStore(config, resolveAudioStore(config, secrets.source === "secrets-manager"), log);
+  const receipts = await createAuditSink(config, { audit });
 
   if (opts.seed !== false) {
     const added = await seedPatients(patients, audit, () => clock.nowIso());
@@ -112,6 +120,9 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     audit,
     docStore,
     secureDocs,
+    audio,
+    audioStatus,
+    receipts,
     simplifier,
     translator,
     speechToText,

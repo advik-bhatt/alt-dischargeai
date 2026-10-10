@@ -2,11 +2,13 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { join } from "node:path";
 import type { Config } from "../config.js";
 import { LINK_TTL_DAYS } from "../config.js";
+import type { Logger } from "../logger.js";
 
 /**
- * Lane 4: the S3 audio bucket (lifecycle: delete day 30). Keys are `<tokenHash>.<ext>`, so an
- * object name reveals nothing about the patient. The local twin writes under backend/data/audio/
- * and the sweeper deletes files 30 days after they were written, the way the lifecycle rule would.
+ * The audio bucket: `emraudio-rh` in the team account ("EMR audio"), which already carries the
+ * lifecycle rule that expires objects after 30 days. Keys are `<linkIdHash>.<ext>`, so an object
+ * name reveals nothing about the patient. The local twin writes under backend/data/audio/ and the
+ * purge job deletes files 30 days after they were written, the way the lifecycle rule would.
  */
 export interface AudioObject {
   key: string;
@@ -49,14 +51,14 @@ export const EXT_BY_MIME: Record<string, string> = {
 
 const MIME_BY_EXT: Record<string, string> = { mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", flac: "audio/flac", ogg: "audio/ogg", webm: "audio/webm", amr: "audio/amr" };
 
-export function audioKeyFor(tokenHash: string, mimeType: string, fileName?: string): string {
+export function audioKeyFor(linkIdHash: string, mimeType: string, fileName?: string): string {
   const byMime = EXT_BY_MIME[mimeType.toLowerCase().split(";")[0]];
   const byName = fileName?.split(".").pop()?.toLowerCase();
   const ext = byMime ?? (byName && /^[a-z0-9]{2,5}$/.test(byName) ? byName : "bin");
-  return `${tokenHash}.${ext}`;
+  return `${linkIdHash}.${ext}`;
 }
 
-const KEY_RE = /^[0-9a-f]{64}\.[a-z0-9]{2,5}$/;
+export const AUDIO_KEY_RE = /^([0-9a-f]{64})\.[a-z0-9]{2,5}$/;
 
 export class LocalAudioStore implements AudioStore {
   readonly name = "local" as const;
@@ -66,7 +68,7 @@ export class LocalAudioStore implements AudioStore {
   }
 
   private pathFor(key: string): string {
-    if (!KEY_RE.test(key)) throw new Error("invalid audio key");
+    if (!AUDIO_KEY_RE.test(key)) throw new Error("invalid audio key");
     return join(this.dir, key);
   }
 
@@ -91,7 +93,7 @@ export class LocalAudioStore implements AudioStore {
     const cutoff = now.getTime() - ttlDays * 24 * 60 * 60 * 1000;
     const out: ExpiredAudioRef[] = [];
     for (const name of readdirSync(this.dir)) {
-      if (!KEY_RE.test(name)) continue;
+      if (!AUDIO_KEY_RE.test(name)) continue;
       const st = statSync(join(this.dir, name));
       if (st.mtimeMs <= cutoff) out.push({ key: name, createdAt: new Date(st.mtimeMs).toISOString() });
     }
@@ -103,11 +105,41 @@ export class LocalAudioStore implements AudioStore {
   }
 }
 
-export async function createAudioStore(config: Config): Promise<AudioStore> {
-  if (config.AUDIO_STORE === "s3") {
+export interface AudioStatus {
+  /** What the configuration asked for after resolving `auto`. */
+  requested: "local" | "s3";
+  /** What is actually in use. */
+  active: "local" | "s3";
+  bucket: string;
+  /** Set when S3 was requested but the bucket could not be reached at boot. */
+  fallbackReason?: string;
+}
+
+/** AUDIO_STORE=s3 -> the bucket; local -> the twin; auto -> s3 when Secrets Manager resolved (the team account is in reach). */
+export function resolveAudioStore(config: Pick<Config, "AUDIO_STORE">, secretResolved: boolean): "local" | "s3" {
+  if (config.AUDIO_STORE === "auto") return secretResolved ? "s3" : "local";
+  return config.AUDIO_STORE;
+}
+
+/**
+ * Builds the audio store. For S3 the bucket is probed once (HeadBucket, 5 s); if it is unreachable
+ * the local twin takes over and the reason is reported in /health instead of failing the boot.
+ */
+export async function createAudioStore(config: Config, mode: "local" | "s3", log?: Logger): Promise<{ store: AudioStore; status: AudioStatus }> {
+  const bucket = config.AUDIO_BUCKET;
+  if (mode === "s3") {
     const { S3AudioStore } = await import("./s3/audio.js");
-    if (!config.AUDIO_BUCKET) throw new Error("AUDIO_STORE=s3 needs AUDIO_BUCKET");
-    return new S3AudioStore({ bucket: config.AUDIO_BUCKET, region: config.AWS_REGION });
+    const s3 = new S3AudioStore({ bucket, region: config.AWS_REGION });
+    try {
+      await s3.headBucket(5000);
+      log?.info({ bucket }, "audio store: S3 bucket reachable");
+      return { store: s3, status: { requested: "s3", active: "s3", bucket } };
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
+      const fallbackReason = `${e?.name ?? "Error"}: ${String(e?.message ?? err).slice(0, 160)}`;
+      log?.warn({ bucket, reason: fallbackReason, dir: config.AUDIO_DIR }, "audio store: S3 bucket unreachable, using the local twin");
+      return { store: new LocalAudioStore(config.AUDIO_DIR), status: { requested: "s3", active: "local", bucket, fallbackReason } };
+    }
   }
-  return new LocalAudioStore(config.AUDIO_DIR);
+  return { store: new LocalAudioStore(config.AUDIO_DIR), status: { requested: "local", active: "local", bucket } };
 }

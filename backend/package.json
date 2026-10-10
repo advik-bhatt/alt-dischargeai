@@ -20,6 +20,7 @@
     "fetch-rds-bundle": "sh scripts/fetch-rds-bundle.sh",
     "show-audit": "tsx scripts/show-audit.ts",
     "setup-dynamo": "tsx scripts/setup-dynamo.ts",
+    "ensure-s3-lifecycle": "tsx scripts/ensure-s3-lifecycle.ts",
     "email-worker": "tsx scripts/email-worker.ts",
     "live-ingest": "tsx scripts/live-ingest.ts",
     "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts"

@@ -68,7 +68,8 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
         text = r.text;
       } else {
         await setStage("transcribing");
-        const r = await ctx.speechToText.transcribe({ audio: pending.file!.buffer, mimeType: pending.file!.mimeType, fileName: pending.file!.fileName, audioKey: link.audioKey ?? undefined });
+        // Transcribe Medical reads the clip from the bucket by key; with the local twin it gets the bytes.
+        const r = await ctx.speechToText.transcribe({ audio: pending.file!.buffer, mimeType: pending.file!.mimeType, fileName: pending.file!.fileName, audioKey: ctx.audio.name === "s3" ? (link.audioKey ?? undefined) : undefined });
         transcript = { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs };
         await jobs.mergeMeta(jobId, { speechProvider: r.provider, transcribeJobName: r.jobName, transcribeMs: r.latencyMs }, clock.nowIso());
         text = normalizeText(r.transcript);
