@@ -82,7 +82,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   if (config.DEMO_NOW) log.warn({ demoNow: config.DEMO_NOW, offsetDays: clock.offsetDays }, "DEMO_NOW is set: the app clock is pinned for a demo");
   const db = await openDb(config);
   log.info({ sql: db.describe }, "sql connected");
-  const ran = await migrate(db, () => clock.nowIso());
+  const ran = await migrate(db, () => clock.nowIso(), (changes) => log.warn({ changes }, "pre-contract tables set aside: renamed to *_pre_contract, rows kept"));
   if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
 
   // The team's patient table, read-only. Its columns are mapped once here; startup stops with the real

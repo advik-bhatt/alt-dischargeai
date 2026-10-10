@@ -84,7 +84,7 @@ SQL, one portable schema (`src/db/migrations/0001_init.sql`), `VARCHAR` for ever
 - `summaries(uid PK, item JSON, expires_at, created_at)`: the SQL twin of the DynamoDB table.
 - `schema_migrations(name, applied_at)`.
 
-MySQL rewrites in `migrate.ts`: `AUTOINCREMENT -> AUTO_INCREMENT`, `TEXT -> MEDIUMTEXT`, `CREATE INDEX IF NOT EXISTS -> CREATE INDEX` (duplicate index errors ignored). Statements are split and run one by one. Files named `NNNN_x.sqlite.sql` / `NNNN_x.mysql.sql` run on that dialect only (0002 rebuilds `activeLinks` without the old foreign key on SQLite and drops it on MySQL, ignoring "does not exist"). The summary upsert is spelled per dialect (`ON CONFLICT (uid) DO UPDATE` / `ON DUPLICATE KEY UPDATE`).
+MySQL rewrites in `migrate.ts`: `AUTOINCREMENT -> AUTO_INCREMENT`, `TEXT -> MEDIUMTEXT`, `CREATE INDEX IF NOT EXISTS -> CREATE INDEX` (duplicate index errors ignored). Statements are split and run one by one. Before the files run, a database migrated by the pre-contract backend (0001 recorded, no `activeLinks`) has that version's own tables renamed to `<name>_pre_contract` with rows kept and their foreign keys dropped, and the old 0001 record removed, so the current schema builds (`setAsidePreContractSchema`, `detachPreContractForeignKeys`). Files named `NNNN_x.sqlite.sql` / `NNNN_x.mysql.sql` run on that dialect only (0002 rebuilds `activeLinks` without the old foreign key on SQLite and drops it on MySQL, ignoring "does not exist"). The summary upsert is spelled per dialect (`ON CONFLICT (uid) DO UPDATE` / `ON DUPLICATE KEY UPDATE`).
 
 DynamoDB `discharge-summaries` (single hash key `uid`, TTL `expiresAt`), one plain item per summary:
 

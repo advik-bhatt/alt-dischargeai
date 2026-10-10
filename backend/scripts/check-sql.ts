@@ -17,7 +17,8 @@ const { env, secrets } = await loadRuntimeEnv();
 const config = loadConfig(env);
 const t0 = Date.now();
 const db = await openDb(config);
-const ran = await migrate(db);
+let setAside: string[] = [];
+const ran = await migrate(db, undefined, (renamed) => (setAside = renamed));
 const counts: Record<string, number> = {};
 for (const t of [...REQUIRED_TABLES, "schema_migrations"]) counts[t] = Number((await db.get<{ n: number | string }>(`SELECT COUNT(*) AS n FROM ${t}`))?.n ?? 0);
 const patientsRepo = new PatientsRepo(db, config.PATIENTS_TABLE);
@@ -30,4 +31,4 @@ try {
 }
 const version = db.dialect === "mysql" ? (await db.get<{ v: string }>("SELECT VERSION() AS v"))?.v : (await db.get<{ v: string }>("SELECT sqlite_version() AS v"))?.v;
 await db.close();
-console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, counts, patients, ms: Date.now() - t0 }, null, 2));
+console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, preContractTablesSetAside: setAside, counts, patients, ms: Date.now() - t0 }, null, 2));
