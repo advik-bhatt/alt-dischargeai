@@ -25,19 +25,26 @@ function toItem(r: Row): DocItem {
   };
 }
 
-/** The SQLite (or Postgres) twin of the DynamoDB table. Same item shape, same semantics. */
+/** The upsert is the one statement the two engines spell differently. */
+export function upsertDocumentSql(dialect: Db["dialect"]): string {
+  const insert = "INSERT INTO documents (pk, sk, ciphertext, iv, tag, key_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+  if (dialect === "mysql") {
+    return `${insert} ON DUPLICATE KEY UPDATE ciphertext = VALUES(ciphertext), iv = VALUES(iv), tag = VALUES(tag), key_version = VALUES(key_version), expires_at = VALUES(expires_at), created_at = VALUES(created_at)`;
+  }
+  return `${insert} ON CONFLICT (pk, sk) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, tag = excluded.tag, key_version = excluded.key_version, expires_at = excluded.expires_at, created_at = excluded.created_at`;
+}
+
+/** The SQL twin of the DynamoDB table (SQLite locally, the same table on MariaDB). Same item shape, same semantics. */
 export class LocalDocumentStore implements DocumentStore {
   readonly name = "local" as const;
-  constructor(private readonly db: Db) {}
+  private readonly upsert: string;
+
+  constructor(private readonly db: Db) {
+    this.upsert = upsertDocumentSql(db.dialect);
+  }
 
   async put(item: DocItem): Promise<void> {
-    await this.db.run(
-      `INSERT INTO documents (pk, sk, ciphertext, iv, tag, key_version, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (pk, sk) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, tag = excluded.tag,
-         key_version = excluded.key_version, expires_at = excluded.expires_at, created_at = excluded.created_at`,
-      [item.pk, item.sk, item.ciphertext, item.iv, item.tag, item.keyVersion, item.expiresAt, item.createdAt],
-    );
+    await this.db.run(this.upsert, [item.pk, item.sk, item.ciphertext, item.iv, item.tag, item.keyVersion, item.expiresAt, item.createdAt]);
   }
 
   async get(pk: string, sk: string): Promise<DocItem | null> {
@@ -58,10 +65,7 @@ export class LocalDocumentStore implements DocumentStore {
   }
 
   async listExpired(nowEpochSeconds: number, limit = 500): Promise<Pick<DocItem, "pk" | "sk">[]> {
-    return this.db.all<{ pk: string; sk: string }>(
-      "SELECT pk, sk FROM documents WHERE expires_at <= ? ORDER BY expires_at LIMIT ?",
-      [nowEpochSeconds, limit],
-    );
+    return this.db.all<{ pk: string; sk: string }>("SELECT pk, sk FROM documents WHERE expires_at <= ? ORDER BY expires_at LIMIT ?", [nowEpochSeconds, limit]);
   }
 
   async delete(pk: string, sk: string): Promise<void> {

@@ -38,8 +38,19 @@ export const ConfigSchema = z.object({
   PURGE_INTERVAL_MS: int(60_000),
   MAX_UPLOAD_BYTES: int(15 * 1024 * 1024),
 
+  /** SQLite file for local development and tests; ":memory:" for throwaway runs. */
   DATABASE_FILE: z.string().default("data/app.db"),
+  /** sqlite:<file> or mysql://user:password@host:3306/database. Wins over MYSQL_* and DATABASE_FILE. */
   DATABASE_URL: optionalString,
+  /** MariaDB on RDS. Filled from Secrets Manager (mysql-host, mysql-port, mysql-user, mysql-password, mysql-db) unless set here. */
+  MYSQL_HOST: optionalString,
+  MYSQL_PORT: int(3306),
+  MYSQL_USER: optionalString,
+  MYSQL_PASSWORD: optionalString,
+  MYSQL_DATABASE: z.string().default("dischargeai"),
+  MYSQL_POOL_SIZE: int(5),
+  /** AWS connection step 1: the public RDS certificate bundle (scripts/fetch-rds-bundle.sh). */
+  RDS_CA_BUNDLE: z.string().default("certs/global-bundle.pem"),
 
   DOC_STORE: z.enum(["local", "dynamo"]).default("local"),
   DYNAMO_TABLE: z.string().default("dischargeai-docs"),
