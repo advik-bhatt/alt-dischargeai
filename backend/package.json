@@ -23,6 +23,7 @@
     "ensure-s3-lifecycle": "tsx scripts/ensure-s3-lifecycle.ts",
     "email-worker": "tsx scripts/email-worker.ts",
     "live-ingest": "tsx scripts/live-ingest.ts",
+    "verify-infra": "tsx scripts/verify-infra.ts",
     "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts"
   },
   "dependencies": {
