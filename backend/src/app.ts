@@ -11,8 +11,10 @@ import { rateLimit } from "./middleware/rateLimit.js";
 import { healthRouter } from "./routes/health.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { jobsRouter } from "./routes/jobs.js";
+import { patientLinkRouter } from "./routes/patientLink.js";
 import { patientsRouter } from "./routes/patients.js";
 import { summaryRouter } from "./routes/summary.js";
+import { synthesizeRouter } from "./routes/synthesize.js";
 import { translateRouter } from "./routes/translate.js";
 
 export const OPENAPI_FILE = join(import.meta.dirname, "..", "openapi.yaml");
@@ -54,15 +56,17 @@ export function buildApp(ctx: AppContext): Express {
   }
 
   // Provider endpoints (light auth): x-provider-key on these prefixes only.
-  app.use(["/patients", "/ingest", "/jobs"], providerAuth(ctx.config.PROVIDER_API_KEY));
+  app.use(["/patients", "/ingest", "/jobs", "/synthesize"], providerAuth(ctx.config.PROVIDER_API_KEY));
   app.use(patientsRouter(ctx));
   app.use(ingestRouter(ctx));
   app.use(jobsRouter(ctx));
+  app.use(synthesizeRouter(ctx));
 
   // Patient endpoints: authenticated by the unguessable link id, lightly rate limited.
-  app.use(["/summary", "/translate"], rateLimit({ capacity: 120, refillPerSecond: 2 }));
+  app.use(["/summary", "/translate", "/p"], rateLimit({ capacity: 120, refillPerSecond: 2 }));
   app.use(summaryRouter(ctx));
   app.use(translateRouter(ctx));
+  app.use(patientLinkRouter(ctx));
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
   app.use(errorHandler(ctx.log));

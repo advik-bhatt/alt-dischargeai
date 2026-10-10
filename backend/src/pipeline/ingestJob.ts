@@ -164,7 +164,13 @@ export async function synthesizeLink(ctx: AppContext, link: LinkRecord, text: st
     await secureDocs.putJson({ linkIdHash: link.linkIdHash, sk: SK.translation(lang), key, keyVersion: link.keyVersion, value: translation, expiresAtEpochSeconds: expiresAtEpoch, createdAt });
     produced.push(lang);
   }
-  // Translations made on demand earlier stay valid only for the previous English; drop them from the list.
+  // Translations made on demand earlier were made from the previous English: delete them, the
+  // cache-first rule will rebuild them from the new English when a patient asks.
+  for (const sk of await secureDocs.listKeys(link.linkIdHash)) {
+    if (sk.startsWith(SK.translationPrefix) && !produced.includes(sk.slice(SK.translationPrefix.length))) {
+      await secureDocs.delete(link.linkIdHash, sk);
+    }
+  }
   await links.setLanguages(link.linkIdHash, produced);
   await links.setStatus(link.linkIdHash, run.verified ? "ready" : "needs_review");
   ctx.log.info({ link: hashPrefix(link.linkIdHash), verified: run.verified, languages: produced, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs }, "lane 3 finished");

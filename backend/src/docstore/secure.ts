@@ -49,6 +49,10 @@ export class SecureDocs {
     return this.store.deleteAll(pkFor(linkIdHash));
   }
 
+  async delete(linkIdHash: string, sk: string): Promise<void> {
+    await this.store.delete(pkFor(linkIdHash), sk);
+  }
+
   async count(linkIdHash: string): Promise<number> {
     return (await this.store.list(pkFor(linkIdHash))).length;
   }

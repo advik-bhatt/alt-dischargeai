@@ -101,6 +101,11 @@ export class LinksRepo {
     await this.db.run("UPDATE links SET status = ? WHERE link_id_hash = ?", [status, hash]);
   }
 
+  /** The provider-picked language (a re-run through POST /synthesize may change it). */
+  async setLanguage(hash: string, language: string): Promise<void> {
+    await this.db.run("UPDATE links SET language = ? WHERE link_id_hash = ?", [language, hash]);
+  }
+
   async setLanguages(hash: string, languages: string[]): Promise<void> {
     await this.db.run("UPDATE links SET languages = ? WHERE link_id_hash = ?", [JSON.stringify([...new Set(languages)]), hash]);
   }
