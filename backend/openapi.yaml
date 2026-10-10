@@ -44,10 +44,12 @@ components:
   schemas:
     Error:
       type: object
-      required: [error]
+      description: "Every error carries the tasks doc's statusCode and message, plus a stable code in error."
+      required: [statusCode, message, error]
       properties:
+        statusCode: { type: integer, example: 400 }
+        message: { type: string, example: type must be text or pdf }
         error: { type: string, description: Stable machine-readable code }
-        message: { type: string }
     Patient:
       type: object
       description: "The team contract's patient shape (backend tasks doc, GET /patients), exactly these nine keys."
@@ -150,15 +152,19 @@ components:
             fromCache: { type: boolean, description: true when served from the document store, false when the translation agent just ran }
     Accepted:
       type: object
+      required: [statusCode, message, sumId, link, jobId, expiresAt]
       properties:
-        status: { type: string, enum: ["ingestion started"] }
+        statusCode: { type: integer, enum: [202] }
+        message: { type: string, enum: ["ingestion started"] }
+        sumId: { type: string, description: "The random path (22 characters, 128 random bits): the activeLinks.sumId, the DynamoDB uid and sum-id, the sum-id / sum_id query value" }
+        link: { type: string, description: "${PATIENT_APP_URL}/s/${sumId}" }
         jobId: { type: string }
-        linkId: { type: string, description: The 22-character link id; appears here, in the email and on the patient row only }
-        link: { type: string, description: "${PATIENT_APP_URL}/s/${linkId}" }
-        language: { type: string, description: The provider-picked language (BCP-47) produced alongside English }
         expiresAt: { type: string, format: date-time }
+        language: { type: string, description: The provider-picked language (BCP-47) produced alongside English }
         statusUrl: { type: string, description: "/jobs/{jobId}" }
         stage: { type: string }
+        linkId: { type: string, description: The same value as sumId (earlier name) }
+        status: { type: string, enum: ["ingestion started"], description: The same value as message (earlier name) }
     SafetyResult:
       description: Deterministic check that every medication, dose and frequency in the source appears in the output and nothing was invented. Counts and names only; never patient data.
       type: object
@@ -321,17 +327,35 @@ paths:
     post:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: Ingest a discharge summary (text, PDF or audio) for a patient; 202 before any AI call runs
+      summary: "Task 3 of the backend tasks doc: ingest a discharge summary for a patient; 202 before any AI call runs"
       description: |
-        Stores the raw content in the document store, generates the random link id and answers at once.
-        Asynchronously: PDF to text (or audio to text through the speech-to-text adapter), jargon to plain
-        language at a 5th-grade level, deterministic safety checks, translation into the provider-picked
-        language, encrypted storage of raw text + LLM response + translation with expiresAt = now + 30 days,
-        then the email "Your discharge summary is ready at this link". A summary that fails the safety
-        checks is held as needs_review (423 for the patient, no email) until POST /synthesize re-runs it.
+        JSON body { data, type, patientID } (the tasks doc). type "text": data is the discharge summary text.
+        type "pdf": data is the PDF as base64 (a data:application/pdf;base64, prefix is accepted); the PDF is
+        stored in S3 emrpdf-rh as <sumId>.pdf and converted with pdfToText. Any other type answers
+        400 { statusCode: 400, message: "type must be text or pdf" }.
+        The random path (sumId) is stored in the SQL activeLinks table and is the DynamoDB uid of the summary
+        item; raw-text is saved on it. The response comes at once; then, asynchronously: the LLM call (plain
+        language at a 5th-grade level), deterministic safety checks, the provider-picked translation,
+        llm-summary + sum-id saved on the same item with expiresAt = now + 30 days, and the link emailed to the
+        patient's email and to caregiverEmail. A summary that fails the safety checks is held as needs_review
+        (423 for the patient, no email) until POST /synthesize re-runs it.
+        The earlier multipart form (patientId + one of text, file, audio) is kept as an alias; audio comes from
+        the architecture diagram and goes to S3 emraudio-rh.
       requestBody:
         required: true
         content:
+          application/json:
+            schema:
+              type: object
+              required: [data, type, patientID]
+              properties:
+                data: { type: string, description: "The text (type text) or the PDF as base64 (type pdf)" }
+                type: { type: string, enum: [text, pdf] }
+                patientID: { type: string, example: pt-0001 }
+                language: { type: string, description: "Optional provider-picked language (BCP-47 or a name such as Spanish). Default: the patient's preferred language, then English" }
+            examples:
+              text:
+                value: { type: text, patientID: pt-0001, language: es, data: "New medications:\n- Furosemide 40 mg by mouth once daily for swelling" }
           multipart/form-data:
             schema:
               type: object
@@ -340,11 +364,12 @@ paths:
                 patientId: { type: string }
                 text: { type: string, description: Pasted EMR text }
                 file: { type: string, format: binary, description: PDF }
-                audio: { type: string, format: binary, description: Dictation (wav, mp3, m4a, webm, ogg, flac); stored in the audio bucket under the link hash }
+                audio: { type: string, format: binary, description: "Dictation (wav, mp3, m4a, webm, ogg, flac); stored in the audio bucket as <sumId>.<ext>" }
                 language: { type: string, description: Provider-picked language (BCP-47 or name). Default is the patient's preferred language, then English }
       responses:
         "202": { description: ingestion started, content: { application/json: { schema: { $ref: "#/components/schemas/Accepted" } } } }
-        "400": { description: "empty_input, multiple_inputs, invalid_language, or validation error" }
+        "400": { description: "type must be text or pdf, missing patientID or data, empty_input, multiple_inputs, invalid_language, or validation error", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Missing or wrong x-provider-key }
         "404": { description: patient_not_found }
         "413": { description: file_too_large }
   /jobs/{jobId}:

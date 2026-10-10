@@ -29,7 +29,8 @@ import { mergeTtlRule, RULE_ID } from "./ensure-s3-lifecycle.js";
 
 export interface BucketReport {
   bucket: string;
-  existed: boolean;
+  /** null when HeadBucket failed for a reason other than 404 (denied, bad credentials): existence unknown. */
+  existed: boolean | null;
   created: boolean;
   publicAccessBlocked: boolean;
   encryption: string | null;
@@ -41,9 +42,10 @@ export interface BucketReport {
 const fail = (err: unknown) => `${(err as { name?: string }).name ?? "Error"}: ${String((err as Error).message ?? err).slice(0, 200)}`;
 
 export async function ensureBucket(s3: S3Client, Bucket: string, region: string, checkOnly: boolean): Promise<BucketReport> {
-  const report: BucketReport = { bucket: Bucket, existed: true, created: false, publicAccessBlocked: false, encryption: null, lifecycle: { rulePresent: false, rule: null, wrote: false, rules: [] }, changes: [] };
+  const report: BucketReport = { bucket: Bucket, existed: null, created: false, publicAccessBlocked: false, encryption: null, lifecycle: { rulePresent: false, rule: null, wrote: false, rules: [] }, changes: [] };
   try {
     await s3.send(new HeadBucketCommand({ Bucket }));
+    report.existed = true;
   } catch (err) {
     const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
     if (e?.name !== "NotFound" && e?.$metadata?.httpStatusCode !== 404) {
@@ -119,6 +121,17 @@ export async function ensureBucket(s3: S3Client, Bucket: string, region: string,
 const isMain = process.argv[1]?.endsWith("setup-s3.ts");
 if (isMain) {
   const args = process.argv.slice(2);
+  const usage = "usage: npm run setup-s3 [-- --check] [-- --bucket <name>]";
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(usage);
+    process.exit(0);
+  }
+  // Anything unrecognised stops here, before any AWS call: a typo must never fall through to write mode.
+  const unknown = args.filter((a, i) => a !== "--check" && a !== "--bucket" && args[i - 1] !== "--bucket");
+  if (unknown.length || (args.includes("--bucket") && !args[args.indexOf("--bucket") + 1])) {
+    console.error(`unrecognised arguments: ${unknown.join(" ") || "--bucket needs a name"}\n${usage}`);
+    process.exit(2);
+  }
   const checkOnly = args.includes("--check");
   const only = args.includes("--bucket") ? args[args.indexOf("--bucket") + 1] : undefined;
   const { env, secrets } = await loadRuntimeEnv();
@@ -130,11 +143,11 @@ if (isMain) {
     try {
       reports.push(await ensureBucket(s3, b, config.AWS_REGION, checkOnly));
     } catch (err) {
-      reports.push({ bucket: b, existed: false, created: false, publicAccessBlocked: false, encryption: null, lifecycle: { rulePresent: false, rule: null, wrote: false, rules: [] }, changes: [], error: fail(err) });
+      reports.push({ bucket: b, existed: null, created: false, publicAccessBlocked: false, encryption: null, lifecycle: { rulePresent: false, rule: null, wrote: false, rules: [] }, changes: [], error: fail(err) });
     }
   }
   s3.destroy();
   console.log(JSON.stringify({ region: config.AWS_REGION, configSource: secrets.source, checkOnly, ttlDays: LINK_TTL_DAYS, buckets: reports }, null, 2));
-  const missing = reports.some((r) => r.error || !r.existed && !r.created || !r.lifecycle.rulePresent);
+  const missing = reports.some((r) => r.error || (r.existed !== true && !r.created) || !r.lifecycle.rulePresent);
   if (missing) process.exit(checkOnly ? 3 : 2);
 }

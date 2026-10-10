@@ -76,6 +76,35 @@ Checked on 2026-10-10 against `npm run dev` on this commit: 202, then `done` wit
 
 With the default `LLM_PROVIDER=offline`, the simplifier is rule-based: it reads summaries laid out with headings ("New medications:", "Discharge instructions:", "Return precautions:") and bulleted lines, like the samples here and the five examples in `fixtures/`. Free prose it cannot place is caught by the safety check and held for review (`423`), never shown with a medication missing. Start the server with `LLM_PROVIDER=bedrock` and AWS credentials to have Claude handle any layout.
 
+### Task 3: `POST /ingest`
+
+```sh
+# Text: 202 {"statusCode":202,"message":"ingestion started","sumId":...,"link":...,"jobId":...,"expiresAt":...}
+curl -s -H "x-provider-key: dev-provider-key" -H "content-type: application/json" \
+  -d '{"type":"text","patientID":"pt-0001","language":"es","data":"Discharge diagnosis: heart failure.\nNew medications:\n- Furosemide 40 mg by mouth once daily for swelling\nDischarge instructions:\n- Weigh yourself every morning\n- Follow up with cardiology within 1 week\nReturn precautions:\n- Call 911 for chest pain"}' \
+  http://localhost:4000/ingest
+
+# PDF: the task 2 command above (type "pdf", data = base64)
+
+# Any other type: 400 {"statusCode":400,"error":"invalid_type","message":"type must be text or pdf"}
+curl -s -H "x-provider-key: dev-provider-key" -H "content-type: application/json" \
+  -d '{"type":"docx","patientID":"pt-0001","data":"hello"}' http://localhost:4000/ingest
+
+# Unknown patient: 404; no provider key: 401
+curl -s -H "x-provider-key: dev-provider-key" -H "content-type: application/json" \
+  -d '{"type":"text","patientID":"pt-9999","data":"hello"}' http://localhost:4000/ingest
+curl -s -H "content-type: application/json" -d '{"type":"text","patientID":"pt-0001","data":"hello"}' http://localhost:4000/ingest
+
+# The activeLinks row: the patient now has an active link whose sumId matches the 202
+curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/patients/pt-0001
+```
+
+The server terminal prints two emails with the link: `To: harold.jennings@example.test` (the patient) and `To: june.jennings@example.test` (the caregiver). The job's progress is at `GET /jobs/<jobId>` (provider key), as in task 2.
+
+Checked on 2026-10-10 against `npm run dev` on this commit: every response as described, the job `done` with `verified: true` and languages `["en", "es"]`, both emails printed.
+
+Checked live the same day from the build container (team secret loaded, `LLM_PROVIDER=bedrock`, `DATABASE_URL=sqlite:data/live.db` because RDS port 3306 is not reachable from there): the text above for `pt-0001` and the task 2 PDF for `pt-0002` both went `done` and verified on `us.anthropic.claude-sonnet-4-6` (about 5.5 s of model time each, both jobs finished within 14 s). Read back with boto3, each `discharge-summaries` item had `uid` equal to `sum-id`, `patientID`, `raw-text`, `llm-summary` (a map), `translations` (a map holding `es`), `language`, `status: ready`, `createdAt` and `expiresAt` (a number, 30 days out); TTL is enabled on `expiresAt`. The PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, SSE AES256. `emrpdf-rh` was created that day by `npm run setup-s3 -- --bucket emrpdf-rh` (public access blocked, AES256 by default, objects expire after 30 days); a second run changed nothing.
+
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
@@ -152,7 +181,7 @@ Region `us-west-2`, account `183815333909`. All of it is wired in; the backend r
   2. `mysql -h patients.cleqcmkoulma.us-west-2.rds.amazonaws.com -P 3306 -u admin -p"$(aws secretsmanager get-secret-value --secret-id 'arn:aws:secretsmanager:us-west-2:183815333909:secret:hackhealth/secret-ZWa02Q' --query SecretString --output text | jq -r '.["mysql-password"]')" --ssl-verify-server-cert --ssl-ca=./global-bundle.pem` (the console's own snippet reads the RDS-managed master secret with `jq -r '.password'` instead; both work, the password is never pasted).
   The backend does the same over `mysql2`: `ssl: { ca: readFileSync(RDS_CA_BUNDLE), rejectUnauthorized: true }`, a connection pool, `CREATE DATABASE IF NOT EXISTS dischargeai`, then the migrations. Either let the secret drive it, or set `DATABASE_URL=mysql://admin:<password>@patients.cleqcmkoulma.us-west-2.rds.amazonaws.com:3306/dischargeai`. `npm run check-sql` connects, migrates and prints the server version and table counts.
 - DynamoDB table `discharge-summaries`: hash key `uid` (string), no sort key, TTL enabled on `expiresAt` (epoch seconds). One item per summary: `uid` = `sumId`, `sum-id` (the same value), `patientID`, `raw-text`, `llm-summary` (the plain-language JSON in English), `translations` (a map keyed by language code), `language`, `status`, `createdAt`, `expiresAt`, plus the backend's own `inputKind`, `pdfKey`/`audioKey`, `safety` and `meta`. The attributes are plain so teammates can read them and their own LLM agent can write `llm-summary` into the same item; DynamoDB encrypts the table at rest. `npm run setup-dynamo` creates the table when missing and enables TTL, idempotently.
-- S3 bucket `emrpdf-rh`: uploaded PDFs under `<sumId>.pdf` with SSE-S3 (AES256). `npm run setup-s3` creates it when missing and makes sure it blocks public access, encrypts by default and expires objects after 30 days.
+- S3 bucket `emrpdf-rh`: uploaded PDFs under `<sumId>.pdf` with SSE-S3 (AES256). `npm run setup-s3` creates it when missing and makes sure it blocks public access, encrypts by default and expires objects after 30 days (`-- --check` only reports; `-- --bucket <name>` limits it to one bucket).
 - S3 bucket `emraudio-rh`: audio clips under `<sumId>.<ext>` with SSE-S3. It already carries the lifecycle rule `autodelete` (expire after 30 days, abort incomplete multipart uploads after 30 days), which `npm run setup-s3` leaves alone. If either bucket is unreachable at boot the backend falls back to the local folder and says so in `/health` (`providers.pdf.fallbackReason`, `providers.audio.fallbackReason`).
 
 The `sumId` is stored as-is in `activeLinks`, as the DynamoDB `uid` and in the object keys, because the tasks doc has teammates join on it. It is also the patient's credential, so access to the table and the buckets stays limited to the team role.
@@ -168,7 +197,7 @@ IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:
 | S3 `emraudio-rh` | HeadBucket ok; probe object put with SSE AES256 107 ms, get 89 ms, delete 81 ms; lifecycle rule `autodelete` 30 days present |
 | Bedrock Converse | `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0` both answer the tool-based JSON call |
 
-These rows were recorded before the single-item layout and `emrpdf-rh`; the live run of the five tasks on the new layout is recorded with each task below.
+These rows were recorded before the single-item layout and `emrpdf-rh`; the live runs on the new layout are recorded with each task under "Test the five tasks with curl".
 
 ### Needs a key or not exercised live from the build container
 
@@ -237,7 +266,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 92 passing of 92, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 96 passing of 96, 16 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 
