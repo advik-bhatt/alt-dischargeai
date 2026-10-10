@@ -1,0 +1,447 @@
+openapi: 3.0.3
+info:
+  title: DischargeAI backend
+  version: 0.1.0
+  description: |
+    Discharge summaries in (text, PDF or dictated audio), plain-language patient links out, data
+    self-destructs 30 days after creation. Provider endpoints need the `x-provider-key` header. Patient
+    endpoints are authenticated by the unguessable 22-character link id and need no header.
+servers:
+  - url: http://localhost:4000
+tags:
+  - name: provider
+  - name: patient
+  - name: admin
+    description: Only mounted when DEMO_MODE=true.
+components:
+  securitySchemes:
+    providerKey:
+      type: apiKey
+      in: header
+      name: x-provider-key
+  parameters:
+    link:
+      name: link
+      in: query
+      required: true
+      description: The 22-character link id from the patient's email.
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+    Patient:
+      type: object
+      properties:
+        id: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        dateOfBirth: { type: string, format: date }
+        zipCode: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        preferredLanguage: { type: string, nullable: true }
+        activeLinkId: { type: string, nullable: true }
+        activeLinkExpiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    NewPatient:
+      type: object
+      required: [firstName, lastName, dateOfBirth, zipCode, email, phone]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        dateOfBirth: { type: string, format: date }
+        zipCode: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        preferredLanguage: { type: string }
+    Medication:
+      type: object
+      required: [name, dose, howOften, why]
+      properties:
+        name: { type: string, description: Verbatim from the source }
+        dose: { type: string, description: Verbatim from the source; empty if none }
+        howOften: { type: string }
+        why: { type: string }
+        startDate: { type: string }
+    StopMedication:
+      type: object
+      required: [name, why]
+      properties:
+        name: { type: string }
+        why: { type: string }
+    ChecklistItem:
+      type: object
+      required: [id, type, text]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [med, appointment, referral, vital, lab, lifestyle] }
+        text: { type: string }
+        due: { type: string }
+    Warning:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, description: "med_not_in_source | dose_not_in_source | readability_above_target | translation_* | backtranslation_*" }
+        message: { type: string }
+        name: { type: string }
+        dose: { type: string }
+        field: { type: string }
+        value: { oneOf: [{ type: string }, { type: number }] }
+    SimplifiedSummary:
+      type: object
+      required: [readingLevel, language, summary, diagnoses, medications, checklist, returnPrecautions, followUps, questionsToAsk]
+      properties:
+        readingLevel: { type: string, enum: [grade5] }
+        language: { type: string, description: BCP-47 code }
+        summary: { type: string, description: 3 to 5 short sentences }
+        diagnoses:
+          type: array
+          items:
+            type: object
+            required: [plain, clinical]
+            properties:
+              plain: { type: string }
+              clinical: { type: string }
+        medications:
+          type: object
+          required: [new, continue, stop]
+          properties:
+            new: { type: array, items: { $ref: "#/components/schemas/Medication" } }
+            continue: { type: array, items: { $ref: "#/components/schemas/Medication" } }
+            stop: { type: array, items: { $ref: "#/components/schemas/StopMedication" } }
+        checklist: { type: array, items: { $ref: "#/components/schemas/ChecklistItem" } }
+        returnPrecautions:
+          type: object
+          required: [call911, goToER, callClinic]
+          properties:
+            call911: { type: array, items: { type: string } }
+            goToER: { type: array, items: { type: string } }
+            callClinic: { type: array, items: { type: string } }
+        followUps:
+          type: array
+          items:
+            type: object
+            required: [who, when, why]
+            properties:
+              who: { type: string }
+              when: { type: string }
+              why: { type: string }
+        questionsToAsk: { type: array, items: { type: string } }
+    ChecklistState:
+      type: object
+      properties:
+        itemId: { type: string }
+        completed: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    SummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/SimplifiedSummary"
+        - type: object
+          properties:
+            status: { type: string, enum: [ready, needs_review] }
+            expiresAt: { type: string, format: date-time }
+            daysLeft: { type: integer }
+            createdAt: { type: string, format: date-time }
+            warnings: { type: array, items: { $ref: "#/components/schemas/Warning" } }
+            needsReview: { type: boolean }
+            checklistState: { type: array, items: { $ref: "#/components/schemas/ChecklistState" } }
+            verification:
+              type: object
+              properties:
+                provider: { type: string }
+                model: { type: string }
+                fidelityCheck: { type: string, enum: [passed, failed] }
+                readabilityGrade: { type: number }
+                sourceChars: { type: integer }
+                inputKind: { type: string, enum: [text, pdf, audio] }
+    TranslateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SimplifiedSummary"
+        - type: object
+          properties:
+            fromCache: { type: boolean }
+            expiresAt: { type: string, format: date-time }
+            daysLeft: { type: integer }
+            warnings: { type: array, items: { $ref: "#/components/schemas/Warning" } }
+            needsReview: { type: boolean }
+            verification:
+              type: object
+              properties:
+                provider: { type: string }
+                model: { type: string }
+                backTranslationCheck: { type: string, enum: [passed, mismatches_found] }
+                translatedAt: { type: string, format: date-time }
+    Job:
+      type: object
+      properties:
+        jobId: { type: string }
+        stage: { type: string, enum: [received, extracting, transcribing, simplifying, stored, emailing, done, needs_review, failed] }
+        inputKind: { type: string, enum: [text, pdf, audio] }
+        error: { type: string, nullable: true }
+        warnings: { type: array, items: { $ref: "#/components/schemas/Warning" } }
+        meta: { type: object, additionalProperties: true }
+        linkIdHash: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AuditEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        event: { type: string }
+        actor: { type: string, enum: [provider, patient, system] }
+        at: { type: string, format: date-time }
+        details: { type: object, additionalProperties: true, description: Never contains PHI }
+paths:
+  /health:
+    get:
+      summary: Liveness, app clock and active providers
+      responses:
+        "200": { description: OK }
+  /patients:
+    get:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: List or search patients
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Case-insensitive substring over first name, last name, email, phone
+      responses:
+        "200":
+          description: Patients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patients: { type: array, items: { $ref: "#/components/schemas/Patient" } }
+                  count: { type: integer }
+        "401": { description: Missing or wrong x-provider-key, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: Create a patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewPatient" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Patient" } } } }
+        "400": { description: Validation error with zod issues }
+  /patients/{id}:
+    get:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: One patient
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Patient, content: { application/json: { schema: { $ref: "#/components/schemas/Patient" } } } }
+        "404": { description: Unknown patient }
+  /ingest:
+    post:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: Ingest a discharge summary (text, PDF or audio); returns 202 before any AI call runs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [patientId]
+              properties:
+                patientId: { type: string }
+                text: { type: string, description: Pasted EMR text }
+                file: { type: string, format: binary, description: PDF }
+                audio: { type: string, format: binary, description: Dictation (wav, mp3, m4a, webm, ogg, flac) }
+                language: { type: string, description: Patient language preference (name or code) }
+                caregiverEmail: { type: string, format: email }
+                caregiverApproved: { type: boolean, description: Caregiver gets the link only when true }
+      responses:
+        "202":
+          description: Accepted; pipeline runs asynchronously
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId: { type: string }
+                  linkId: { type: string }
+                  link: { type: string, description: "${PATIENT_APP_URL}/s/${linkId}" }
+                  expiresAt: { type: string, format: date-time, description: createdAt + 30 days exactly }
+                  statusUrl: { type: string }
+                  stage: { type: string }
+        "400": { description: "empty_input, multiple_inputs, or validation error" }
+        "404": { description: patient_not_found }
+  /jobs/{jobId}:
+    get:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: Pipeline status
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/Job" } } } }
+        "404": { description: job_not_found }
+  /audit:
+    get:
+      tags: [provider]
+      security: [{ providerKey: [] }]
+      summary: Event trail for a link (no PHI)
+      parameters: [{ $ref: "#/components/parameters/link" }]
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  linkIdHash: { type: string }
+                  link:
+                    type: object
+                    nullable: true
+                    properties:
+                      status: { type: string }
+                      createdAt: { type: string }
+                      expiresAt: { type: string }
+                      keyDestroyed: { type: boolean }
+                      lastViewedAt: { type: string, nullable: true }
+                  events: { type: array, items: { $ref: "#/components/schemas/AuditEvent" } }
+  /summary:
+    get:
+      tags: [patient]
+      summary: The plain-language summary, with the expiry stated upfront
+      parameters: [{ $ref: "#/components/parameters/link" }]
+      responses:
+        "200": { description: Summary, content: { application/json: { schema: { $ref: "#/components/schemas/SummaryResponse" } } } }
+        "400": { description: invalid_link }
+        "404": { description: link_not_found }
+        "410": { description: link_expired or link_purged }
+        "425": { description: "processing; body carries { stage }" }
+  /languages:
+    get:
+      tags: [patient]
+      summary: Languages /translate accepts
+      responses:
+        "200":
+          description: Languages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  languages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string }
+                        name: { type: string }
+                        nativeName: { type: string }
+  /translate:
+    get:
+      tags: [patient]
+      summary: Translate the summary on demand (cached per language; medications stay verbatim)
+      parameters:
+        - $ref: "#/components/parameters/link"
+        - name: language
+          in: query
+          required: true
+          schema: { type: string }
+          description: Name or BCP-47 code from /languages, e.g. Spanish or es
+      responses:
+        "200": { description: Translation, content: { application/json: { schema: { $ref: "#/components/schemas/TranslateResponse" } } } }
+        "400": { description: unsupported_language or invalid_link }
+        "404": { description: link_not_found }
+        "410": { description: link_expired or link_purged }
+        "425": { description: processing }
+  /checklist:
+    get:
+      tags: [patient]
+      summary: Checklist items and the patient's check-offs
+      parameters: [{ $ref: "#/components/parameters/link" }]
+      responses:
+        "200": { description: Items and state }
+  /checklist/complete:
+    post:
+      tags: [patient]
+      summary: Persist a check-off
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [link, itemId, completed]
+              properties:
+                link: { type: string }
+                itemId: { type: string }
+                completed: { type: boolean }
+      responses:
+        "200":
+          description: Updated state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  itemId: { type: string }
+                  completed: { type: boolean }
+                  state: { type: array, items: { $ref: "#/components/schemas/ChecklistState" } }
+        "404": { description: checklist_item_not_found or link_not_found }
+        "410": { description: link_expired or link_purged }
+  /admin/clock/advance:
+    post:
+      tags: [admin]
+      security: [{ providerKey: [] }]
+      summary: Shift the app clock (DEMO_MODE only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days]
+              properties:
+                days: { type: number }
+      responses:
+        "200": { description: "{ now, offsetDays }" }
+  /admin/clock/reset:
+    post:
+      tags: [admin]
+      security: [{ providerKey: [] }]
+      summary: Reset the app clock (DEMO_MODE only)
+      responses:
+        "200": { description: "{ now, offsetDays: 0 }" }
+  /admin/purge:
+    post:
+      tags: [admin]
+      security: [{ providerKey: [] }]
+      summary: Run the purge job now (DEMO_MODE only)
+      responses:
+        "200":
+          description: What was purged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ranAt: { type: string }
+                  linksPurged: { type: integer }
+                  documentsDeleted: { type: integer }
+                  orphanDocumentsDeleted: { type: integer }
+                  purged:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        linkIdHashPrefix: { type: string }
+                        expiresAt: { type: string }
+                        documentsDeleted: { type: integer }
