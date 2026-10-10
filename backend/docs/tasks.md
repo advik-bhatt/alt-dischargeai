@@ -25,6 +25,12 @@ The team's backend tasks doc first, Advik's Granola note second, the team diagra
 ## The team's backend tasks doc
 
 - [x] B0 Rework onto the tasks doc: `activeLinks` table and caregiver columns, one plain DynamoDB item per summary (`uid` = `sumId`, `sum-id`, `raw-text`, `llm-summary`, `translations`), `emrpdf-rh` object store, Node 24 (`engines`, `.nvmrc`), demo on the new routes.
+- [x] B1 `GET /patients` returns exactly `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName`; OpenAPI `Patient` pinned to the same keys by a test.
+- [x] B2 `pdfToText` (`src/extract/pdfToText.ts`) with a one-page sample PDF carried inline in the README curl and tested line for line.
+- [x] B3 `POST /ingest` JSON `{ data, type, patientID }`: 202 `{ statusCode, message: "ingestion started", sumId, link, jobId, expiresAt }`, 400 "type must be text or pdf", PDF to `emrpdf-rh`, `activeLinks` row, `llm-summary` + `sum-id` on the item, email to patient and caregiver. Live on Bedrock, `discharge-summaries` and `emrpdf-rh` (created by `npm run setup-s3 -- --bucket emrpdf-rh`).
+- [x] B4 `GET /llm-sumary?sum-id=` (and `/llm-summary`, `sum_id`): 200, 400, 404, 425, 410 at read time.
+- [x] B5 `GET /translation?lang=&sum_id=`: cache-first on `translations[lang]`, agent on a miss given the `llm-summary`, result saved; live Mandarin on Bedrock.
+- [x] B6 The purge refuses a `DEMO_NOW`-shifted run against DynamoDB or S3 (`DEMO_PURGE_ON_AWS=yes` to override on a throwaway account).
 
 ## Open (for the team)
 
