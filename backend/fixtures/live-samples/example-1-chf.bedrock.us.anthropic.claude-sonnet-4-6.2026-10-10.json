@@ -3,345 +3,755 @@
   "provider": "bedrock",
   "modelId": "us.anthropic.claude-sonnet-4-6",
   "region": "us-west-2",
-  "date": "2026-10-10T19:42:17.348Z",
+  "date": "2026-10-10T21:32:03.458Z",
   "example": "example-1-chf",
-  "wallMs": 46183,
+  "pickedLanguage": "es",
+  "onDemandLanguage": "zh",
+  "wallMs": 50803,
   "job": {
     "stage": "done",
-    "warnings": [],
+    "verified": true,
+    "languages": [
+      "en",
+      "es"
+    ],
+    "safety": {
+      "passed": true,
+      "checkedAt": "2026-10-10T21:31:27.658Z",
+      "method": "deterministic",
+      "sourceMedicationCount": 11,
+      "outputMedicationCount": 11,
+      "verified": [
+        {
+          "name": "Furosemide",
+          "dose": "40 mg",
+          "frequency": "1x/day",
+          "matchedOutput": "Furosemide"
+        },
+        {
+          "name": "Losartan",
+          "dose": "25 mg",
+          "frequency": "1x/day",
+          "matchedOutput": "Losartan"
+        },
+        {
+          "name": "Empagliflozin",
+          "dose": "10 mg",
+          "frequency": "1x/day",
+          "matchedOutput": "Empagliflozin"
+        },
+        {
+          "name": "Amoxicillin-clavulanate",
+          "dose": "875/125 mg",
+          "frequency": "2x/day",
+          "durationDays": 3,
+          "matchedOutput": "Amoxicillin-clavulanate"
+        },
+        {
+          "name": "Metoprolol succinate",
+          "dose": "50 mg",
+          "frequency": "1x/day",
+          "matchedOutput": "Metoprolol succinate"
+        },
+        {
+          "name": "Apixaban",
+          "dose": "5 mg",
+          "frequency": "2x/day",
+          "matchedOutput": "Apixaban"
+        },
+        {
+          "name": "Atorvastatin",
+          "dose": "40 mg",
+          "frequency": "nightly",
+          "matchedOutput": "Atorvastatin"
+        },
+        {
+          "name": "Metformin",
+          "dose": "500 mg",
+          "frequency": "2x/day",
+          "matchedOutput": "Metformin"
+        },
+        {
+          "name": "Lisinopril",
+          "matchedOutput": "Lisinopril"
+        },
+        {
+          "name": "Spironolactone",
+          "matchedOutput": "Spironolactone"
+        },
+        {
+          "name": "Ibuprofen/other NSAIDs",
+          "matchedOutput": "Ibuprofen/other NSAIDs"
+        }
+      ],
+      "dropped": [],
+      "unsupported": [],
+      "readabilityGrade": 5.9,
+      "translations": [
+        {
+          "language": "es",
+          "passed": true,
+          "issues": []
+        }
+      ]
+    },
     "meta": {
       "inputBytes": 4927,
+      "language": "es",
       "provider": "bedrock",
       "model": "us.anthropic.claude-sonnet-4-6",
       "usage": {
-        "inputTokens": 3658,
-        "outputTokens": 2110,
-        "totalTokens": 5768
+        "inputTokens": 3062,
+        "outputTokens": 2211,
+        "totalTokens": 5273
       },
-      "llmMs": 15861,
-      "sourceChars": 4760
+      "llmMs": 31835,
+      "sourceChars": 4760,
+      "languages": [
+        "en",
+        "es"
+      ],
+      "skipped": []
     }
   },
-  "summary": {
-    "readingLevel": "grade5",
+  "english": {
     "language": "en",
-    "summary": "You were in the hospital for a weak heart and lung infection. Your heart was not pumping well and fluid built up in your lungs and legs. You also had a kidney injury that got better. Some of your medicines changed while you were here. The most important thing to do at home is weigh yourself every morning and call your care team if your weight goes up fast.",
-    "diagnoses": [
+    "steps": [
       {
-        "plain": "Weak heart that does not pump well (pump strength was 30%)",
-        "clinical": "Acute on chronic HFrEF, EF 30%"
+        "id": "step-1",
+        "text": "Start Furosemide 40 mg by mouth once every day. This water pill helps remove extra fluid from your body. Take it in the morning when possible so you are not up at night using the bathroom."
       },
       {
-        "plain": "Lung infection in the lower right lung",
-        "clinical": "Community-acquired right lower lobe pneumonia"
+        "id": "step-2",
+        "text": "Start Losartan 25 mg by mouth once every day. This pill helps your heart and controls your blood pressure."
       },
       {
-        "plain": "Kidney injury that got better before you went home",
-        "clinical": "Acute kidney injury, improved"
+        "id": "step-3",
+        "text": "Start Empagliflozin 10 mg by mouth once every day. This pill helps your heart and controls your blood sugar."
       },
       {
-        "plain": "High blood pressure",
-        "clinical": "Hypertension"
+        "id": "step-4",
+        "text": "Start Amoxicillin-clavulanate 875/125 mg by mouth twice every day for 3 more days. Finish all the pills even if you feel better. This treats your pneumonia (lung infection)."
       },
       {
-        "plain": "Type 2 diabetes (high blood sugar)",
-        "clinical": "Type 2 diabetes mellitus"
+        "id": "step-5",
+        "text": "Keep taking Metoprolol succinate 50 mg once every day. This pill helps your heart beat steadily."
       },
       {
-        "plain": "Long-term irregular heartbeat",
-        "clinical": "Chronic atrial fibrillation"
+        "id": "step-6",
+        "text": "Keep taking Apixaban 5 mg twice every day. This blood thinner helps prevent dangerous clots. Watch for unusual bleeding and tell your doctor about any new medicines."
       },
       {
-        "plain": "Long-term low red blood cell count",
-        "clinical": "Chronic anemia"
+        "id": "step-7",
+        "text": "Keep taking Atorvastatin 40 mg every night. This pill helps control your cholesterol."
+      },
+      {
+        "id": "step-8",
+        "text": "Keep taking Metformin 500 mg twice every day, as long as your kidney tests stay stable. This pill controls your blood sugar."
+      },
+      {
+        "id": "step-9",
+        "text": "Stop taking Lisinopril. Your doctor switched you to Losartan instead."
+      },
+      {
+        "id": "step-10",
+        "text": "Do not take Spironolactone for now. It is on hold until your doctor checks your kidney function and potassium level."
+      },
+      {
+        "id": "step-11",
+        "text": "Do not take Ibuprofen or any other NSAIDs (pain relievers like Advil or Aleve). They can harm your heart and kidneys. Ask your doctor before taking any pain reliever."
+      },
+      {
+        "id": "step-12",
+        "text": "Weigh yourself every morning at about the same time. Weigh yourself before eating and after using the bathroom. Write down your weight each day."
+      },
+      {
+        "id": "step-13",
+        "text": "Keep a written record of your weight and any new symptoms every day."
+      },
+      {
+        "id": "step-14",
+        "text": "Call your heart-failure team right away if your weight goes up quickly or your swelling or breathlessness gets worse. Follow the weight-management plan your team gave you."
+      },
+      {
+        "id": "step-15",
+        "text": "Eat a low-sodium (low-salt) diet. Try to keep sodium to about 2 grams per day. Avoid salty snacks, canned soups, and processed foods."
+      },
+      {
+        "id": "step-16",
+        "text": "Follow the fluid (liquid) limits your heart-failure team told you about."
+      },
+      {
+        "id": "step-17",
+        "text": "Get a basic metabolic panel (a blood test that checks your kidneys and potassium) before or at your first outpatient visit."
+      },
+      {
+        "id": "step-18",
+        "text": "See your primary care doctor and your heart doctor (cardiologist) within about 1 week."
       }
     ],
-    "medications": {
-      "new": [
-        {
-          "name": "Furosemide",
-          "dose": "40 mg",
-          "howOften": "once a day by mouth",
-          "why": "To remove extra fluid from your body",
-          "startDate": "at discharge"
-        },
-        {
-          "name": "Losartan",
-          "dose": "25 mg",
-          "howOften": "once a day by mouth",
-          "why": "To help your heart and lower your blood pressure",
-          "startDate": "at discharge"
-        },
-        {
-          "name": "Empagliflozin",
-          "dose": "10 mg",
-          "howOften": "once a day by mouth",
-          "why": "To help your heart and manage your blood sugar",
-          "startDate": "at discharge"
-        },
-        {
-          "name": "Amoxicillin-clavulanate",
-          "dose": "875/125 mg",
-          "howOften": "twice a day by mouth for 3 more days",
-          "why": "To finish treating your lung infection",
-          "startDate": "at discharge"
-        }
-      ],
-      "continue": [
-        {
-          "name": "Metoprolol succinate",
-          "dose": "50 mg",
-          "howOften": "once a day",
-          "why": "To help your heart beat in a steady, healthy way"
-        },
-        {
-          "name": "Apixaban",
-          "dose": "5 mg",
-          "howOften": "twice a day",
-          "why": "To prevent blood clots because of your irregular heartbeat"
-        },
-        {
-          "name": "Atorvastatin",
-          "dose": "40 mg",
-          "howOften": "every night",
-          "why": "To keep your cholesterol at a healthy level"
-        },
-        {
-          "name": "Metformin",
-          "dose": "500 mg",
-          "howOften": "twice a day",
-          "why": "To manage your blood sugar — only if your kidney function stays stable"
-        }
-      ],
-      "stop": [
-        {
-          "name": "Lisinopril",
-          "why": "Stopped because your medicine was changed to losartan"
-        },
-        {
-          "name": "Spironolactone",
-          "why": "On hold until your doctor checks your kidney function and potassium level"
-        },
-        {
-          "name": "Ibuprofen/other NSAIDs",
-          "why": "Do not take these pain relievers — they can make heart failure and kidney problems worse"
-        }
-      ]
-    },
-    "checklist": [
+    "medications": [
       {
-        "id": "med-1",
-        "type": "med",
-        "text": "Take furosemide 40 mg every morning — try to take it early in the day",
-        "due": "every morning"
+        "name": "Furosemide",
+        "dose": "40 mg",
+        "howOften": "by mouth once daily",
+        "status": "new",
+        "why": "Removes extra fluid from your body to help with swelling and breathing (volume management)"
       },
       {
-        "id": "med-2",
-        "type": "med",
-        "text": "Take losartan 25 mg once a day",
-        "due": "every day"
+        "name": "Losartan",
+        "dose": "25 mg",
+        "howOften": "by mouth once daily",
+        "status": "new",
+        "why": "Helps your weak heart pump better and lowers your blood pressure"
       },
       {
-        "id": "med-3",
-        "type": "med",
-        "text": "Take empagliflozin 10 mg once a day",
-        "due": "every day"
+        "name": "Empagliflozin",
+        "dose": "10 mg",
+        "howOften": "by mouth once daily",
+        "status": "new",
+        "why": "Helps manage your heart failure and blood sugar (diabetes)"
       },
       {
-        "id": "med-4",
-        "type": "med",
-        "text": "Finish all 3 remaining days of amoxicillin-clavulanate 875/125 mg twice a day — even if you feel better",
-        "due": "twice a day for 3 more days"
+        "name": "Amoxicillin-clavulanate",
+        "dose": "875/125 mg",
+        "howOften": "by mouth twice daily for 3 additional days",
+        "status": "new",
+        "why": "Finishes treating your pneumonia (lung infection)"
       },
       {
-        "id": "vital-1",
-        "type": "vital",
-        "text": "Weigh yourself at the same time every morning and write it down",
-        "due": "every morning"
+        "name": "Metoprolol succinate",
+        "dose": "50 mg",
+        "howOften": "once daily",
+        "status": "continue",
+        "why": "Helps your heart beat at a steady, healthy rate"
       },
       {
-        "id": "vital-2",
-        "type": "vital",
-        "text": "Write down any new symptoms each day along with your weight",
-        "due": "every day"
+        "name": "Apixaban",
+        "dose": "5 mg",
+        "howOften": "twice daily",
+        "status": "continue",
+        "why": "Prevents dangerous blood clots because you have atrial fibrillation (an irregular heartbeat)"
       },
       {
-        "id": "lab-1",
-        "type": "lab",
-        "text": "Get a basic metabolic panel blood test to check your kidneys and potassium",
-        "due": "before or at your first follow-up visit within 1 week"
+        "name": "Atorvastatin",
+        "dose": "40 mg",
+        "howOften": "nightly",
+        "status": "continue",
+        "why": "Helps control your cholesterol"
       },
       {
-        "id": "appt-1",
-        "type": "appointment",
-        "text": "See your primary care doctor for a follow-up visit",
-        "due": "within about 1 week"
+        "name": "Metformin",
+        "dose": "500 mg",
+        "howOften": "twice daily, provided renal function remains stable",
+        "status": "continue",
+        "why": "Controls your blood sugar for type 2 diabetes, as long as your kidney tests stay stable"
       },
       {
-        "id": "appt-2",
-        "type": "appointment",
-        "text": "See your heart doctor (cardiologist) for a follow-up visit",
-        "due": "within about 1 week"
+        "name": "Lisinopril",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "Stopped because your doctor switched you to Losartan instead"
       },
       {
-        "id": "life-1",
-        "type": "lifestyle",
-        "text": "Eat a low-salt diet — aim for no more than 2 grams of sodium a day",
-        "due": "every day"
+        "name": "Spironolactone",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "On hold until your doctor checks your kidney function and potassium level — do not take it until your doctor says it is safe"
       },
       {
-        "id": "life-2",
-        "type": "lifestyle",
-        "text": "Follow the fluid limits your heart-failure team gave you",
-        "due": "every day"
-      },
-      {
-        "id": "life-3",
-        "type": "lifestyle",
-        "text": "Do not take ibuprofen or any other NSAIDs (anti-inflammatory pain relievers) unless your doctor says it is okay",
-        "due": "ongoing"
+        "name": "Ibuprofen/other NSAIDs",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "Avoid because of your heart failure and recent kidney injury — ask your doctor before taking any pain reliever"
       }
     ],
-    "returnPrecautions": {
-      "call911": [
-        "Chest pain or pressure",
-        "Fainting or severe dizziness",
-        "New confusion or severe weakness"
-      ],
-      "goToER": [
-        "New or worsening shortness of breath, especially at rest",
-        "Legs or belly swelling up fast",
-        "Much less urine than normal"
-      ],
-      "callClinic": [
-        "Your weight goes up quickly — follow the weight plan your heart-failure team gave you",
-        "Swelling or breathlessness gets worse",
-        "Fever or cough gets worse even while taking antibiotics",
-        "You notice signs of unusual bleeding (because you take apixaban, a blood thinner)"
-      ]
-    },
     "followUps": [
       {
         "who": "Primary care doctor",
-        "when": "Within about 1 week",
-        "why": "To check how you are doing after leaving the hospital"
+        "when": "Within approximately 1 week",
+        "why": "To check on your recovery from heart failure and pneumonia, review your medicines, and get your blood test results"
       },
       {
         "who": "Cardiologist (heart doctor)",
-        "when": "Within about 1 week",
-        "why": "To review your heart function and adjust your heart medicines"
+        "when": "Within approximately 1 week",
+        "why": "To check your heart function, review your heart failure medicines, and decide next steps for your care"
       },
       {
-        "who": "Heart-failure team or primary care doctor",
-        "when": "Within about 1 week",
-        "why": "To review your blood test results for kidney function and potassium, and decide about restarting spironolactone"
+        "who": "Lab (blood test)",
+        "when": "Before or at your first outpatient visit",
+        "why": "A basic metabolic panel to check your kidney function (creatinine) and potassium level so your doctor can decide about held medicines"
       }
     ],
-    "questionsToAsk": [
-      "At what number on the scale should I call the clinic about a weight gain?",
-      "When will you decide if it is safe to restart spironolactone?",
-      "Are there any pain relievers I can safely use instead of ibuprofen?",
-      "What signs of bleeding should I watch for while taking apixaban?",
-      "How will you know if my kidney function is stable enough to keep taking metformin?"
+    "warnings": [
+      {
+        "text": "Chest pain or pressure — call 911 right away",
+        "tier": "call911"
+      },
+      {
+        "text": "Fainting or severe dizziness — call 911 right away",
+        "tier": "call911"
+      },
+      {
+        "text": "New confusion or severe weakness — call 911 right away",
+        "tier": "call911"
+      },
+      {
+        "text": "New or worsening shortness of breath, especially at rest — go to the emergency room the same day",
+        "tier": "er"
+      },
+      {
+        "text": "Rapidly worsening swelling in your legs or belly — go to the emergency room the same day",
+        "tier": "er"
+      },
+      {
+        "text": "Significant decrease in urine output — go to the emergency room the same day",
+        "tier": "er"
+      },
+      {
+        "text": "Fever or worsening cough even though you are taking antibiotics — call your care team",
+        "tier": "clinic"
+      },
+      {
+        "text": "Rapid increase in weight or worsening swelling or breathlessness — call your heart-failure team right away",
+        "tier": "clinic"
+      }
     ],
-    "status": "ready",
-    "expiresAt": "2026-11-09T19:41:31.204Z",
-    "daysLeft": 30,
-    "createdAt": "2026-10-10T19:41:31.204Z",
-    "warnings": [],
-    "needsReview": false,
-    "checklistState": [],
-    "verification": {
-      "provider": "bedrock",
-      "model": "us.anthropic.claude-sonnet-4-6",
-      "fidelityCheck": "passed",
-      "readabilityGrade": 4,
-      "sourceChars": 4760,
-      "inputKind": "text"
-    }
+    "availableLanguages": [
+      "en",
+      "es"
+    ],
+    "fromCache": true
   },
-  "translation": {
-    "language": "Spanish",
-    "fromCache": false,
-    "warnings": [],
-    "verification": {
-      "provider": "bedrock",
-      "model": "us.anthropic.claude-sonnet-4-6",
-      "backTranslationCheck": "passed",
-      "translatedAt": "2026-10-10T19:42:17.344Z"
-    },
-    "summary": "Usted estuvo en el hospital por un corazón débil y una infección en los pulmones. Su corazón no bombeaba bien y se acumuló líquido en sus pulmones y piernas. También tuvo una lesión en los riñones que mejoró. Algunos de sus medicamentos cambiaron mientras estuvo aquí. Lo más importante que debe hacer en casa es pesarse cada mañana y llamar a su equipo de salud si su peso sube rápido.",
-    "medications": {
-      "new": [
+  "picked": {
+    "language": "es",
+    "steps": [
+      {
+        "id": "step-1",
+        "text": "Comience a tomar Furosemide 40 mg por la boca una vez al día. Esta pastilla para el agua ayuda a eliminar el líquido extra de su cuerpo. Tómela por la mañana si puede, para no tener que levantarse al baño por la noche."
+      },
+      {
+        "id": "step-2",
+        "text": "Comience a tomar Losartan 25 mg por la boca una vez al día. Esta pastilla ayuda a su corazón y controla su presión arterial."
+      },
+      {
+        "id": "step-3",
+        "text": "Comience a tomar Empagliflozin 10 mg por la boca una vez al día. Esta pastilla ayuda a su corazón y controla su azúcar en la sangre."
+      },
+      {
+        "id": "step-4",
+        "text": "Comience a tomar Amoxicillin-clavulanate 875/125 mg por la boca dos veces al día por 3 días más. Tome todas las pastillas aunque se sienta mejor. Esto trata su neumonía (infección en los pulmones)."
+      },
+      {
+        "id": "step-5",
+        "text": "Siga tomando Metoprolol succinate 50 mg una vez al día. Esta pastilla ayuda a que su corazón lata de manera regular."
+      },
+      {
+        "id": "step-6",
+        "text": "Siga tomando Apixaban 5 mg dos veces al día. Este anticoagulante ayuda a prevenir coágulos peligrosos. Esté atento a sangrados inusuales e informe a su médico sobre cualquier medicamento nuevo."
+      },
+      {
+        "id": "step-7",
+        "text": "Siga tomando Atorvastatin 40 mg cada noche. Esta pastilla ayuda a controlar su colesterol."
+      },
+      {
+        "id": "step-8",
+        "text": "Siga tomando Metformin 500 mg dos veces al día, siempre que sus análisis de riñón se mantengan estables. Esta pastilla controla su azúcar en la sangre."
+      },
+      {
+        "id": "step-9",
+        "text": "Deje de tomar Lisinopril. Su médico lo cambió por Losartan."
+      },
+      {
+        "id": "step-10",
+        "text": "No tome Spironolactone por ahora. Está suspendido hasta que su médico revise el funcionamiento de sus riñones y su nivel de potasio."
+      },
+      {
+        "id": "step-11",
+        "text": "No tome Ibuprofen ni ningún otro AINE (analgésicos como Advil o Aleve). Pueden dañar su corazón y sus riñones. Pregúntele a su médico antes de tomar cualquier analgésico."
+      },
+      {
+        "id": "step-12",
+        "text": "Pésese cada mañana a la misma hora. Hágalo antes de comer y después de ir al baño. Anote su peso cada día."
+      },
+      {
+        "id": "step-13",
+        "text": "Lleve un registro escrito de su peso y de cualquier síntoma nuevo cada día."
+      },
+      {
+        "id": "step-14",
+        "text": "Llame a su equipo de insuficiencia cardíaca de inmediato si su peso sube rápido o si su hinchazón o falta de aire empeora. Siga el plan de control de peso que le dio su equipo."
+      },
+      {
+        "id": "step-15",
+        "text": "Siga una dieta baja en sodio (baja en sal). Trate de consumir no más de 2 gramos de sodio al día. Evite los bocadillos salados, las sopas enlatadas y los alimentos procesados."
+      },
+      {
+        "id": "step-16",
+        "text": "Respete los límites de líquidos que le indicó su equipo de insuficiencia cardíaca."
+      },
+      {
+        "id": "step-17",
+        "text": "Hágase un panel metabólico básico (un análisis de sangre que revisa sus riñones y su potasio) antes de su primera visita ambulatoria o durante esa visita."
+      },
+      {
+        "id": "step-18",
+        "text": "Vea a su médico de atención primaria y a su médico del corazón (cardiólogo) en aproximadamente 1 semana."
+      }
+    ],
+    "medications": [
+      {
+        "name": "Furosemide",
+        "dose": "40 mg",
+        "howOften": "por la boca una vez al día",
+        "status": "new",
+        "why": "Elimina el líquido extra de su cuerpo para ayudar con la hinchazón y la respiración (control de volumen)"
+      },
+      {
+        "name": "Losartan",
+        "dose": "25 mg",
+        "howOften": "por la boca una vez al día",
+        "status": "new",
+        "why": "Ayuda a que su corazón débil bombee mejor y baja su presión arterial"
+      },
+      {
+        "name": "Empagliflozin",
+        "dose": "10 mg",
+        "howOften": "por la boca una vez al día",
+        "status": "new",
+        "why": "Ayuda a controlar su insuficiencia cardíaca y su azúcar en la sangre (diabetes)"
+      },
+      {
+        "name": "Amoxicillin-clavulanate",
+        "dose": "875/125 mg",
+        "howOften": "por la boca dos veces al día por 3 días adicionales",
+        "status": "new",
+        "why": "Termina de tratar su neumonía (infección en los pulmones)"
+      },
+      {
+        "name": "Metoprolol succinate",
+        "dose": "50 mg",
+        "howOften": "una vez al día",
+        "status": "continue",
+        "why": "Ayuda a que su corazón lata a un ritmo regular y saludable"
+      },
+      {
+        "name": "Apixaban",
+        "dose": "5 mg",
+        "howOften": "dos veces al día",
+        "status": "continue",
+        "why": "Previene coágulos de sangre peligrosos porque usted tiene fibrilación auricular (latido irregular del corazón)"
+      },
+      {
+        "name": "Atorvastatin",
+        "dose": "40 mg",
+        "howOften": "cada noche",
+        "status": "continue",
+        "why": "Ayuda a controlar su colesterol"
+      },
+      {
+        "name": "Metformin",
+        "dose": "500 mg",
+        "howOften": "dos veces al día, siempre que la función renal se mantenga estable",
+        "status": "continue",
+        "why": "Controla su azúcar en la sangre para la diabetes tipo 2, siempre que sus análisis de riñón se mantengan estables"
+      },
+      {
+        "name": "Lisinopril",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "Suspendido porque su médico lo cambió por Losartan"
+      },
+      {
+        "name": "Spironolactone",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "Suspendido hasta que su médico revise el funcionamiento de sus riñones y su nivel de potasio — no lo tome hasta que su médico diga que es seguro"
+      },
+      {
+        "name": "Ibuprofen/other NSAIDs",
+        "dose": "",
+        "howOften": "",
+        "status": "stop",
+        "why": "Evítelo por su insuficiencia cardíaca y la lesión reciente en los riñones — pregúntele a su médico antes de tomar cualquier analgésico"
+      }
+    ],
+    "followUps": [
+      {
+        "who": "Médico de atención primaria",
+        "when": "En aproximadamente 1 semana",
+        "why": "Para revisar su recuperación de la insuficiencia cardíaca y la neumonía, repasar sus medicamentos y ver los resultados de sus análisis de sangre"
+      },
+      {
+        "who": "Cardiólogo (médico del corazón)",
+        "when": "En aproximadamente 1 semana",
+        "why": "Para revisar el funcionamiento de su corazón, repasar sus medicamentos para la insuficiencia cardíaca y decidir los próximos pasos de su atención"
+      },
+      {
+        "who": "Laboratorio (análisis de sangre)",
+        "when": "Antes de su primera visita ambulatoria o durante esa visita",
+        "why": "Un panel metabólico básico para revisar el funcionamiento de sus riñones (creatinina) y su nivel de potasio, para que su médico pueda decidir sobre los medicamentos suspendidos"
+      }
+    ],
+    "warnings": [
+      {
+        "text": "Dolor o presión en el pecho — llame al 911 de inmediato",
+        "tier": "call911"
+      },
+      {
+        "text": "Desmayo o mareo severo — llame al 911 de inmediato",
+        "tier": "call911"
+      },
+      {
+        "text": "Confusión nueva o debilidad severa — llame al 911 de inmediato",
+        "tier": "call911"
+      },
+      {
+        "text": "Falta de aire nueva o que empeora, especialmente en reposo — vaya a la sala de emergencias el mismo día",
+        "tier": "er"
+      },
+      {
+        "text": "Hinchazón que empeora rápidamente en las piernas o el abdomen — vaya a la sala de emergencias el mismo día",
+        "tier": "er"
+      },
+      {
+        "text": "Disminución importante en la cantidad de orina — vaya a la sala de emergencias el mismo día",
+        "tier": "er"
+      },
+      {
+        "text": "Fiebre o tos que empeora aunque esté tomando antibióticos — llame a su equipo de atención",
+        "tier": "clinic"
+      },
+      {
+        "text": "Aumento rápido de peso o hinchazón o falta de aire que empeora — llame a su equipo de insuficiencia cardíaca de inmediato",
+        "tier": "clinic"
+      }
+    ],
+    "availableLanguages": [
+      "en",
+      "es"
+    ],
+    "fromCache": true
+  },
+  "onDemand": {
+    "first": {
+      "language": "zh",
+      "steps": [
+        {
+          "id": "step-1",
+          "text": "开始口服 Furosemide 40 mg，每天 1 次。这是一种利尿药，帮助排出体内多余的水分。尽量在早上服用，这样晚上就不需要频繁起床上厕所。"
+        },
+        {
+          "id": "step-2",
+          "text": "开始口服 Losartan 25 mg，每天 1 次。这种药帮助心脏功能并控制血压。"
+        },
+        {
+          "id": "step-3",
+          "text": "开始口服 Empagliflozin 10 mg，每天 1 次。这种药帮助心脏功能并控制血糖。"
+        },
+        {
+          "id": "step-4",
+          "text": "开始口服 Amoxicillin-clavulanate 875/125 mg，每天 2 次，再服用 3 天。即使感觉好转，也要把所有药片服完。这是用来治疗肺炎（肺部感染）的。"
+        },
+        {
+          "id": "step-5",
+          "text": "继续服用 Metoprolol succinate 50 mg，每天 1 次。这种药帮助心脏保持稳定的跳动。"
+        },
+        {
+          "id": "step-6",
+          "text": "继续服用 Apixaban 5 mg，每天 2 次。这是一种血液稀释药，帮助预防危险的血栓。注意是否有异常出血，并告知医生任何新服用的药物。"
+        },
+        {
+          "id": "step-7",
+          "text": "继续每晚服用 Atorvastatin 40 mg。这种药帮助控制胆固醇。"
+        },
+        {
+          "id": "step-8",
+          "text": "只要肾功能检查保持稳定，继续每天 2 次服用 Metformin 500 mg。这种药控制血糖。"
+        },
+        {
+          "id": "step-9",
+          "text": "停止服用 Lisinopril。医生已将其换成 Losartan。"
+        },
+        {
+          "id": "step-10",
+          "text": "暂时不要服用 Spironolactone。在医生检查您的肾功能和钾水平之前，此药暂停使用。"
+        },
+        {
+          "id": "step-11",
+          "text": "不要服用 Ibuprofen 或任何其他非甾体抗炎药（如 Advil 或 Aleve 等止痛药）。这些药会损害心脏和肾脏。服用任何止痛药前请先咨询医生。"
+        },
+        {
+          "id": "step-12",
+          "text": "每天早上大约同一时间称体重。在吃东西之前、上厕所之后称重。每天记录您的体重。"
+        },
+        {
+          "id": "step-13",
+          "text": "每天用书面记录您的体重和任何新出现的症状。"
+        },
+        {
+          "id": "step-14",
+          "text": "如果体重迅速增加，或者水肿、呼吸困难加重，请立即联系您的心衰团队。遵照团队给您的体重管理计划。"
+        },
+        {
+          "id": "step-15",
+          "text": "饮食要低钠（低盐）。尽量每天钠的摄入量控制在约 2 克以内。避免咸味零食、罐头汤和加工食品。"
+        },
+        {
+          "id": "step-16",
+          "text": "遵照心衰团队告知您的液体（饮水）限制要求。"
+        },
+        {
+          "id": "step-17",
+          "text": "在第一次门诊就诊之前或就诊时，进行基础代谢检查（一种检查肾功能和钾水平的血液检测）。"
+        },
+        {
+          "id": "step-18",
+          "text": "在约 1 周内分别看您的初级保健医生和心脏科医生（心脏病专科医生）。"
+        }
+      ],
+      "medications": [
         {
           "name": "Furosemide",
           "dose": "40 mg",
-          "howOften": "una vez al día por la boca",
-          "why": "Para eliminar el exceso de líquido de su cuerpo",
-          "startDate": "al momento del alta"
+          "howOften": "每天口服 1 次",
+          "status": "new",
+          "why": "排出体内多余的水分，帮助缓解水肿和呼吸困难（液体管理）"
         },
         {
           "name": "Losartan",
           "dose": "25 mg",
-          "howOften": "una vez al día por la boca",
-          "why": "Para ayudar a su corazón y bajar su presión arterial",
-          "startDate": "al momento del alta"
+          "howOften": "每天口服 1 次",
+          "status": "new",
+          "why": "帮助虚弱的心脏更好地泵血，并降低血压"
         },
         {
           "name": "Empagliflozin",
           "dose": "10 mg",
-          "howOften": "una vez al día por la boca",
-          "why": "Para ayudar a su corazón y controlar su azúcar en la sangre",
-          "startDate": "al momento del alta"
+          "howOften": "每天口服 1 次",
+          "status": "new",
+          "why": "帮助控制心力衰竭和血糖（糖尿病）"
         },
         {
           "name": "Amoxicillin-clavulanate",
           "dose": "875/125 mg",
-          "howOften": "dos veces al día por la boca durante 3 días más",
-          "why": "Para terminar de tratar su infección pulmonar",
-          "startDate": "al momento del alta"
-        }
-      ],
-      "continue": [
+          "howOften": "每天口服 2 次，再服用 3 天",
+          "status": "new",
+          "why": "完成肺炎（肺部感染）的治疗"
+        },
         {
           "name": "Metoprolol succinate",
           "dose": "50 mg",
-          "howOften": "una vez al día",
-          "why": "Para ayudar a que su corazón lata de manera estable y saludable"
+          "howOften": "每天 1 次",
+          "status": "continue",
+          "why": "帮助心脏保持稳定、健康的跳动频率"
         },
         {
           "name": "Apixaban",
           "dose": "5 mg",
-          "howOften": "dos veces al día",
-          "why": "Para prevenir coágulos de sangre debido a su latido irregular del corazón"
+          "howOften": "每天 2 次",
+          "status": "continue",
+          "why": "因为您有心房颤动（心跳不规律），此药可预防危险的血栓"
         },
         {
           "name": "Atorvastatin",
           "dose": "40 mg",
-          "howOften": "cada noche",
-          "why": "Para mantener su colesterol en un nivel saludable"
+          "howOften": "每晚 1 次",
+          "status": "continue",
+          "why": "帮助控制胆固醇"
         },
         {
           "name": "Metformin",
           "dose": "500 mg",
-          "howOften": "dos veces al día",
-          "why": "Para controlar su azúcar en la sangre — solo si la función de sus riñones se mantiene estable"
-        }
-      ],
-      "stop": [
+          "howOften": "每天 2 次，前提是肾功能保持稳定",
+          "status": "continue",
+          "why": "在肾功能检查保持稳定的前提下，控制 2 型糖尿病的血糖"
+        },
         {
           "name": "Lisinopril",
-          "why": "Se suspendió porque su medicamento fue cambiado a losartan"
+          "dose": "",
+          "howOften": "",
+          "status": "stop",
+          "why": "已停用，因为医生将其换成了 Losartan"
         },
         {
           "name": "Spironolactone",
-          "why": "En pausa hasta que su médico revise la función de sus riñones y su nivel de potasio"
+          "dose": "",
+          "howOften": "",
+          "status": "stop",
+          "why": "暂停使用，等待医生检查肾功能和钾水平后再决定——在医生确认安全之前请勿服用"
         },
         {
           "name": "Ibuprofen/other NSAIDs",
-          "why": "No tome estos analgésicos — pueden empeorar la insuficiencia cardíaca y los problemas de riñón"
+          "dose": "",
+          "howOften": "",
+          "status": "stop",
+          "why": "因心力衰竭和近期肾损伤，需避免使用——服用任何止痛药前请先咨询医生"
         }
-      ]
-    }
+      ],
+      "followUps": [
+        {
+          "who": "初级保健医生",
+          "when": "约 1 周内",
+          "why": "检查心力衰竭和肺炎的恢复情况，复查用药，并查看血液检测结果"
+        },
+        {
+          "who": "心脏科医生（心脏病专科医生）",
+          "when": "约 1 周内",
+          "why": "检查心脏功能，复查心力衰竭用药，并决定下一步治疗方案"
+        },
+        {
+          "who": "化验室（血液检测）",
+          "when": "在第一次门诊就诊之前或就诊时",
+          "why": "进行基础代谢检查，检测肾功能（肌酐）和钾水平，以便医生决定是否恢复暂停的药物"
+        }
+      ],
+      "warnings": [
+        {
+          "text": "胸痛或胸部压迫感——立即拨打 911",
+          "tier": "call911"
+        },
+        {
+          "text": "晕厥或严重头晕——立即拨打 911",
+          "tier": "call911"
+        },
+        {
+          "text": "突然出现意识混乱或严重无力——立即拨打 911",
+          "tier": "call911"
+        },
+        {
+          "text": "新出现或加重的呼吸困难，尤其是在休息时——当天去急诊室",
+          "tier": "er"
+        },
+        {
+          "text": "腿部或腹部水肿迅速加重——当天去急诊室",
+          "tier": "er"
+        },
+        {
+          "text": "尿量明显减少——当天去急诊室",
+          "tier": "er"
+        },
+        {
+          "text": "即使在服用抗生素期间仍出现发烧或咳嗽加重——联系您的医疗团队",
+          "tier": "clinic"
+        },
+        {
+          "text": "体重迅速增加，或水肿、呼吸困难加重——立即联系您的心衰团队",
+          "tier": "clinic"
+        }
+      ],
+      "availableLanguages": [
+        "en",
+        "es",
+        "zh"
+      ],
+      "fromCache": false
+    },
+    "secondFromCache": true
   }
 }
