@@ -1,0 +1,347 @@
+{
+  "verified": "live on bedrock",
+  "provider": "bedrock",
+  "modelId": "us.anthropic.claude-sonnet-4-6",
+  "region": "us-west-2",
+  "date": "2026-10-10T19:42:17.348Z",
+  "example": "example-1-chf",
+  "wallMs": 46183,
+  "job": {
+    "stage": "done",
+    "warnings": [],
+    "meta": {
+      "inputBytes": 4927,
+      "provider": "bedrock",
+      "model": "us.anthropic.claude-sonnet-4-6",
+      "usage": {
+        "inputTokens": 3658,
+        "outputTokens": 2110,
+        "totalTokens": 5768
+      },
+      "llmMs": 15861,
+      "sourceChars": 4760
+    }
+  },
+  "summary": {
+    "readingLevel": "grade5",
+    "language": "en",
+    "summary": "You were in the hospital for a weak heart and lung infection. Your heart was not pumping well and fluid built up in your lungs and legs. You also had a kidney injury that got better. Some of your medicines changed while you were here. The most important thing to do at home is weigh yourself every morning and call your care team if your weight goes up fast.",
+    "diagnoses": [
+      {
+        "plain": "Weak heart that does not pump well (pump strength was 30%)",
+        "clinical": "Acute on chronic HFrEF, EF 30%"
+      },
+      {
+        "plain": "Lung infection in the lower right lung",
+        "clinical": "Community-acquired right lower lobe pneumonia"
+      },
+      {
+        "plain": "Kidney injury that got better before you went home",
+        "clinical": "Acute kidney injury, improved"
+      },
+      {
+        "plain": "High blood pressure",
+        "clinical": "Hypertension"
+      },
+      {
+        "plain": "Type 2 diabetes (high blood sugar)",
+        "clinical": "Type 2 diabetes mellitus"
+      },
+      {
+        "plain": "Long-term irregular heartbeat",
+        "clinical": "Chronic atrial fibrillation"
+      },
+      {
+        "plain": "Long-term low red blood cell count",
+        "clinical": "Chronic anemia"
+      }
+    ],
+    "medications": {
+      "new": [
+        {
+          "name": "Furosemide",
+          "dose": "40 mg",
+          "howOften": "once a day by mouth",
+          "why": "To remove extra fluid from your body",
+          "startDate": "at discharge"
+        },
+        {
+          "name": "Losartan",
+          "dose": "25 mg",
+          "howOften": "once a day by mouth",
+          "why": "To help your heart and lower your blood pressure",
+          "startDate": "at discharge"
+        },
+        {
+          "name": "Empagliflozin",
+          "dose": "10 mg",
+          "howOften": "once a day by mouth",
+          "why": "To help your heart and manage your blood sugar",
+          "startDate": "at discharge"
+        },
+        {
+          "name": "Amoxicillin-clavulanate",
+          "dose": "875/125 mg",
+          "howOften": "twice a day by mouth for 3 more days",
+          "why": "To finish treating your lung infection",
+          "startDate": "at discharge"
+        }
+      ],
+      "continue": [
+        {
+          "name": "Metoprolol succinate",
+          "dose": "50 mg",
+          "howOften": "once a day",
+          "why": "To help your heart beat in a steady, healthy way"
+        },
+        {
+          "name": "Apixaban",
+          "dose": "5 mg",
+          "howOften": "twice a day",
+          "why": "To prevent blood clots because of your irregular heartbeat"
+        },
+        {
+          "name": "Atorvastatin",
+          "dose": "40 mg",
+          "howOften": "every night",
+          "why": "To keep your cholesterol at a healthy level"
+        },
+        {
+          "name": "Metformin",
+          "dose": "500 mg",
+          "howOften": "twice a day",
+          "why": "To manage your blood sugar — only if your kidney function stays stable"
+        }
+      ],
+      "stop": [
+        {
+          "name": "Lisinopril",
+          "why": "Stopped because your medicine was changed to losartan"
+        },
+        {
+          "name": "Spironolactone",
+          "why": "On hold until your doctor checks your kidney function and potassium level"
+        },
+        {
+          "name": "Ibuprofen/other NSAIDs",
+          "why": "Do not take these pain relievers — they can make heart failure and kidney problems worse"
+        }
+      ]
+    },
+    "checklist": [
+      {
+        "id": "med-1",
+        "type": "med",
+        "text": "Take furosemide 40 mg every morning — try to take it early in the day",
+        "due": "every morning"
+      },
+      {
+        "id": "med-2",
+        "type": "med",
+        "text": "Take losartan 25 mg once a day",
+        "due": "every day"
+      },
+      {
+        "id": "med-3",
+        "type": "med",
+        "text": "Take empagliflozin 10 mg once a day",
+        "due": "every day"
+      },
+      {
+        "id": "med-4",
+        "type": "med",
+        "text": "Finish all 3 remaining days of amoxicillin-clavulanate 875/125 mg twice a day — even if you feel better",
+        "due": "twice a day for 3 more days"
+      },
+      {
+        "id": "vital-1",
+        "type": "vital",
+        "text": "Weigh yourself at the same time every morning and write it down",
+        "due": "every morning"
+      },
+      {
+        "id": "vital-2",
+        "type": "vital",
+        "text": "Write down any new symptoms each day along with your weight",
+        "due": "every day"
+      },
+      {
+        "id": "lab-1",
+        "type": "lab",
+        "text": "Get a basic metabolic panel blood test to check your kidneys and potassium",
+        "due": "before or at your first follow-up visit within 1 week"
+      },
+      {
+        "id": "appt-1",
+        "type": "appointment",
+        "text": "See your primary care doctor for a follow-up visit",
+        "due": "within about 1 week"
+      },
+      {
+        "id": "appt-2",
+        "type": "appointment",
+        "text": "See your heart doctor (cardiologist) for a follow-up visit",
+        "due": "within about 1 week"
+      },
+      {
+        "id": "life-1",
+        "type": "lifestyle",
+        "text": "Eat a low-salt diet — aim for no more than 2 grams of sodium a day",
+        "due": "every day"
+      },
+      {
+        "id": "life-2",
+        "type": "lifestyle",
+        "text": "Follow the fluid limits your heart-failure team gave you",
+        "due": "every day"
+      },
+      {
+        "id": "life-3",
+        "type": "lifestyle",
+        "text": "Do not take ibuprofen or any other NSAIDs (anti-inflammatory pain relievers) unless your doctor says it is okay",
+        "due": "ongoing"
+      }
+    ],
+    "returnPrecautions": {
+      "call911": [
+        "Chest pain or pressure",
+        "Fainting or severe dizziness",
+        "New confusion or severe weakness"
+      ],
+      "goToER": [
+        "New or worsening shortness of breath, especially at rest",
+        "Legs or belly swelling up fast",
+        "Much less urine than normal"
+      ],
+      "callClinic": [
+        "Your weight goes up quickly — follow the weight plan your heart-failure team gave you",
+        "Swelling or breathlessness gets worse",
+        "Fever or cough gets worse even while taking antibiotics",
+        "You notice signs of unusual bleeding (because you take apixaban, a blood thinner)"
+      ]
+    },
+    "followUps": [
+      {
+        "who": "Primary care doctor",
+        "when": "Within about 1 week",
+        "why": "To check how you are doing after leaving the hospital"
+      },
+      {
+        "who": "Cardiologist (heart doctor)",
+        "when": "Within about 1 week",
+        "why": "To review your heart function and adjust your heart medicines"
+      },
+      {
+        "who": "Heart-failure team or primary care doctor",
+        "when": "Within about 1 week",
+        "why": "To review your blood test results for kidney function and potassium, and decide about restarting spironolactone"
+      }
+    ],
+    "questionsToAsk": [
+      "At what number on the scale should I call the clinic about a weight gain?",
+      "When will you decide if it is safe to restart spironolactone?",
+      "Are there any pain relievers I can safely use instead of ibuprofen?",
+      "What signs of bleeding should I watch for while taking apixaban?",
+      "How will you know if my kidney function is stable enough to keep taking metformin?"
+    ],
+    "status": "ready",
+    "expiresAt": "2026-11-09T19:41:31.204Z",
+    "daysLeft": 30,
+    "createdAt": "2026-10-10T19:41:31.204Z",
+    "warnings": [],
+    "needsReview": false,
+    "checklistState": [],
+    "verification": {
+      "provider": "bedrock",
+      "model": "us.anthropic.claude-sonnet-4-6",
+      "fidelityCheck": "passed",
+      "readabilityGrade": 4,
+      "sourceChars": 4760,
+      "inputKind": "text"
+    }
+  },
+  "translation": {
+    "language": "Spanish",
+    "fromCache": false,
+    "warnings": [],
+    "verification": {
+      "provider": "bedrock",
+      "model": "us.anthropic.claude-sonnet-4-6",
+      "backTranslationCheck": "passed",
+      "translatedAt": "2026-10-10T19:42:17.344Z"
+    },
+    "summary": "Usted estuvo en el hospital por un corazón débil y una infección en los pulmones. Su corazón no bombeaba bien y se acumuló líquido en sus pulmones y piernas. También tuvo una lesión en los riñones que mejoró. Algunos de sus medicamentos cambiaron mientras estuvo aquí. Lo más importante que debe hacer en casa es pesarse cada mañana y llamar a su equipo de salud si su peso sube rápido.",
+    "medications": {
+      "new": [
+        {
+          "name": "Furosemide",
+          "dose": "40 mg",
+          "howOften": "una vez al día por la boca",
+          "why": "Para eliminar el exceso de líquido de su cuerpo",
+          "startDate": "al momento del alta"
+        },
+        {
+          "name": "Losartan",
+          "dose": "25 mg",
+          "howOften": "una vez al día por la boca",
+          "why": "Para ayudar a su corazón y bajar su presión arterial",
+          "startDate": "al momento del alta"
+        },
+        {
+          "name": "Empagliflozin",
+          "dose": "10 mg",
+          "howOften": "una vez al día por la boca",
+          "why": "Para ayudar a su corazón y controlar su azúcar en la sangre",
+          "startDate": "al momento del alta"
+        },
+        {
+          "name": "Amoxicillin-clavulanate",
+          "dose": "875/125 mg",
+          "howOften": "dos veces al día por la boca durante 3 días más",
+          "why": "Para terminar de tratar su infección pulmonar",
+          "startDate": "al momento del alta"
+        }
+      ],
+      "continue": [
+        {
+          "name": "Metoprolol succinate",
+          "dose": "50 mg",
+          "howOften": "una vez al día",
+          "why": "Para ayudar a que su corazón lata de manera estable y saludable"
+        },
+        {
+          "name": "Apixaban",
+          "dose": "5 mg",
+          "howOften": "dos veces al día",
+          "why": "Para prevenir coágulos de sangre debido a su latido irregular del corazón"
+        },
+        {
+          "name": "Atorvastatin",
+          "dose": "40 mg",
+          "howOften": "cada noche",
+          "why": "Para mantener su colesterol en un nivel saludable"
+        },
+        {
+          "name": "Metformin",
+          "dose": "500 mg",
+          "howOften": "dos veces al día",
+          "why": "Para controlar su azúcar en la sangre — solo si la función de sus riñones se mantiene estable"
+        }
+      ],
+      "stop": [
+        {
+          "name": "Lisinopril",
+          "why": "Se suspendió porque su medicamento fue cambiado a losartan"
+        },
+        {
+          "name": "Spironolactone",
+          "why": "En pausa hasta que su médico revise la función de sus riñones y su nivel de potasio"
+        },
+        {
+          "name": "Ibuprofen/other NSAIDs",
+          "why": "No tome estos analgésicos — pueden empeorar la insuficiencia cardíaca y los problemas de riñón"
+        }
+      ]
+    }
+  }
+}
