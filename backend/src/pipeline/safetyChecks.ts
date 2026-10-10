@@ -131,6 +131,8 @@ function specificDrugName(raw: string): string | undefined {
   }
   const first = n.split(" ")[0];
   if (!first || CATEGORY_WORDS.has(first)) return undefined;
+  // A drug name starts with a letter; "1 of 3" or "- 2 -" is layout debris, not a medication.
+  if (!/^[a-z]/.test(first)) return undefined;
   return n;
 }
 

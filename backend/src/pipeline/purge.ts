@@ -13,13 +13,13 @@ export interface PurgeReport {
  * The 30-day self-destruct, in code. For every link past its expiry:
  *   1. destroy the data key (crypto-shredding: anything still stored is unreadable from this moment),
  *   2. delete the document-store items,
- *   3. mark the link purged, clear the patient's active link, drop the checklist state,
+ *   3. mark the link purged and clear the patient's active link,
  *   4. write audit events.
  * Read paths check expiry on their own, so a purge that has not run yet never exposes data.
  * DynamoDB TTL on `expiresAt` is a backstop; AWS deletes expired items "typically within a few days".
  */
 export async function runPurge(ctx: AppContext): Promise<PurgeReport> {
-  const { links, patients, audit, secureDocs, docStore, checklist, clock, log } = ctx;
+  const { links, patients, audit, secureDocs, docStore, clock, log } = ctx;
   const ranAt = clock.nowIso();
   const report: PurgeReport = { ranAt, linksPurged: 0, documentsDeleted: 0, orphanDocumentsDeleted: 0, purged: [] };
 
@@ -36,7 +36,6 @@ export async function runPurge(ctx: AppContext): Promise<PurgeReport> {
     if (patient?.activeLinkId && hashLinkId(patient.activeLinkId) === link.linkIdHash) {
       await patients.clearActiveLink(patient.id, patient.activeLinkId);
     }
-    await checklist.deleteForLink(link.linkIdHash);
     await audit.append({ event: "link.purged", linkIdHash: link.linkIdHash, actor: "system", at: clock.nowIso(), details: { documentsDeleted: deleted, expiresAt: link.expiresAt } });
 
     report.linksPurged += 1;

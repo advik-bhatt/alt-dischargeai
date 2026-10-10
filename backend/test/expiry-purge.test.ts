@@ -5,7 +5,7 @@ import { aadFor, open } from "../src/crypto/envelope.js";
 import { pkFor } from "../src/docstore/types.js";
 import { createTestApp, exampleText, ingestText, type TestApp } from "./helpers.js";
 
-describe("30-day expiry and purge", () => {
+describe("30-day expiry at read time and the purge job", () => {
   let t: TestApp;
   let linkId: string;
   let patientId: string;
@@ -32,8 +32,6 @@ describe("30-day expiry and purge", () => {
     expect(day30.body.error).toBe("link_expired");
     const translate = await request(t.app).get(`/translate?link=${linkId}&language=es`);
     expect(translate.status).toBe(410);
-    const checklist = await request(t.app).post("/checklist/complete").send({ link: linkId, itemId: "med-1", completed: true });
-    expect(checklist.status).toBe(410);
   });
 
   it("purge destroys the key, deletes every document, marks the link purged and clears the patient's active link", async () => {
@@ -59,19 +57,16 @@ describe("30-day expiry and purge", () => {
 
     // The only copy of the key is gone; the ciphertext we kept is unreadable with anything the system still holds.
     expect(() => open(Buffer.alloc(32), keptCiphertext, aadFor(pkFor(hash), "simplified", 1))).toThrow();
-    // (and only the destroyed key could ever have opened it)
     expect(open(keptKey, keptCiphertext, aadFor(pkFor(hash), "simplified", 1)).length).toBeGreaterThan(0);
 
     const gone = await request(t.app).get(`/summary?link=${linkId}`);
     expect(gone.status).toBe(410);
     expect(gone.body.error).toBe("link_purged");
 
-    const audit = await t.provider(request(t.app).get(`/audit?link=${linkId}`));
-    const events = audit.body.events.map((e: { event: string }) => e.event);
+    const events = (await t.ctx.audit.listForLink(hash)).map((e) => e.event);
     expect(events).toContain("link.expired");
     expect(events).toContain("key.destroyed");
     expect(events).toContain("link.purged");
-    expect(audit.body.link.keyDestroyed).toBe(true);
   });
 
   it("purge is idempotent and leaves unexpired links alone", async () => {

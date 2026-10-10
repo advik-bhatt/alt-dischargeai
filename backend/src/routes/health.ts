@@ -9,15 +9,14 @@ export function healthRouter(ctx: AppContext): Router {
       service: "dischargeai-backend",
       clock: { now: ctx.clock.nowIso(), offsetDays: ctx.clock.offsetDays },
       linkTtlDays: ctx.linkTtlDays,
-      demoMode: ctx.config.DEMO_MODE,
       providers: {
         llm: ctx.simplifier.name,
         llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.LLM_PROVIDER === "anthropic" ? ctx.config.ANTHROPIC_MODEL : "fixtures+rules",
-        transcribe: ctx.transcriber.name,
+        speech: ctx.speechToText.name,
+        sql: ctx.db.dialect,
         docStore: ctx.docStore.name,
         email: ctx.mailer.transportName,
         emailQueue: ctx.emailQueue ? "sqs" : "none",
-        sql: ctx.db.dialect,
       },
       queue: { pending: ctx.queue.size },
     });

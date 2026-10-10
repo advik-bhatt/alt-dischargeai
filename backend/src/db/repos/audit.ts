@@ -8,15 +8,17 @@ export type AuditEvent =
   | "job.stage"
   | "email.sent"
   | "email.queued"
+  | "email.skipped"
   | "summary.viewed"
   | "translation.created"
   | "translation.viewed"
-  | "checklist.updated"
+  | "synthesize.run"
   | "link.expired"
   | "link.purged"
   | "key.destroyed"
+  | "purge.run"
   | "clock.advanced"
-  | "purge.run";
+  | "deletion.receipt";
 
 export interface AuditRow {
   id: number;
@@ -24,7 +26,7 @@ export interface AuditRow {
   link_id_hash: string | null;
   actor: AuditActor;
   at: string;
-  details: string;
+  details: string | null;
 }
 
 export interface AuditEntry {
@@ -37,7 +39,7 @@ export interface AuditEntry {
 }
 
 /** Keys that must never land in audit details. The repo strips them defensively. */
-const PHI_KEYS = new Set(["text", "summary", "email", "to", "firstName", "lastName", "name", "link", "linkId", "body"]);
+const PHI_KEYS = new Set(["text", "summary", "steps", "medications", "email", "to", "firstName", "lastName", "name", "link", "linkId", "token", "body", "output", "transcript"]);
 
 function scrub(details: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -48,16 +50,20 @@ function scrub(details: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+function toEntry(r: AuditRow): AuditEntry {
+  let details: Record<string, unknown> = {};
+  try {
+    details = JSON.parse(r.details ?? "{}") as Record<string, unknown>;
+  } catch {
+    details = {};
+  }
+  return { id: Number(r.id), event: r.event, linkIdHash: r.link_id_hash, actor: r.actor, at: r.at, details };
+}
+
 export class AuditRepo {
   constructor(private readonly db: Db) {}
 
-  async append(input: {
-    event: AuditEvent;
-    linkIdHash?: string | null;
-    actor: AuditActor;
-    at: string;
-    details?: Record<string, unknown>;
-  }): Promise<void> {
+  async append(input: { event: AuditEvent; linkIdHash?: string | null; actor: AuditActor; at: string; details?: Record<string, unknown> }): Promise<void> {
     await this.db.run("INSERT INTO audit_log (event, link_id_hash, actor, at, details) VALUES (?, ?, ?, ?, ?)", [
       input.event,
       input.linkIdHash ?? null,
@@ -68,17 +74,17 @@ export class AuditRepo {
   }
 
   async listForLink(linkIdHash: string): Promise<AuditEntry[]> {
-    const rows = await this.db.all<AuditRow>(
-      "SELECT * FROM audit_log WHERE link_id_hash = ? ORDER BY id",
-      [linkIdHash],
-    );
-    return rows.map((r) => ({
-      id: Number(r.id),
-      event: r.event,
-      linkIdHash: r.link_id_hash,
-      actor: r.actor,
-      at: r.at,
-      details: JSON.parse(r.details) as Record<string, unknown>,
-    }));
+    const rows = await this.db.all<AuditRow>("SELECT * FROM audit_log WHERE link_id_hash = ? ORDER BY id", [linkIdHash]);
+    return rows.map(toEntry);
+  }
+
+  async listByEvent(event: AuditEvent, limit = 1000): Promise<AuditEntry[]> {
+    const rows = await this.db.all<AuditRow>("SELECT * FROM audit_log WHERE event = ? ORDER BY id DESC LIMIT ?", [event, limit]);
+    return rows.map(toEntry).reverse();
+  }
+
+  async listRecent(limit = 200): Promise<AuditEntry[]> {
+    const rows = await this.db.all<AuditRow>("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", [limit]);
+    return rows.map(toEntry).reverse();
   }
 }

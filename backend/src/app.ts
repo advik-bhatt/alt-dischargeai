@@ -10,7 +10,6 @@ import { providerAuth } from "./middleware/providerAuth.js";
 import { rateLimit } from "./middleware/rateLimit.js";
 import { adminRouter } from "./routes/admin.js";
 import { auditRouter } from "./routes/audit.js";
-import { checklistRouter } from "./routes/checklist.js";
 import { healthRouter } from "./routes/health.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { jobsRouter } from "./routes/jobs.js";
@@ -30,7 +29,7 @@ export function buildApp(ctx: AppContext): Express {
       logger: ctx.log,
       autoLogging: { ignore: (req) => req.url === "/health" || (req.url ?? "").startsWith("/docs") },
       serializers: {
-        req: (req) => ({ method: req.method, url: String(req.url).split("?")[0] }),
+        req: (req) => ({ method: req.method, url: String(req.url).split("?")[0].replace(/^\/p\/[^/]+/, "/p/:token") }),
         res: (res) => ({ statusCode: res.statusCode }),
       },
     }),
@@ -56,7 +55,7 @@ export function buildApp(ctx: AppContext): Express {
     app.use("/docs", swaggerUi.serve, swaggerUi.setup(doc));
   }
 
-  // Provider endpoints: x-provider-key on these prefixes only.
+  // Provider endpoints (light auth): x-provider-key on these prefixes only.
   app.use(["/patients", "/ingest", "/jobs", "/audit", "/admin"], providerAuth(ctx.config.PROVIDER_API_KEY));
   app.use(patientsRouter(ctx));
   app.use(ingestRouter(ctx));
@@ -65,10 +64,9 @@ export function buildApp(ctx: AppContext): Express {
   if (ctx.config.DEMO_MODE) app.use(adminRouter(ctx));
 
   // Patient endpoints: authenticated by the unguessable link id, lightly rate limited.
-  app.use(["/summary", "/translate", "/languages", "/checklist"], rateLimit({ capacity: 120, refillPerSecond: 2 }));
+  app.use(["/summary", "/translate"], rateLimit({ capacity: 120, refillPerSecond: 2 }));
   app.use(summaryRouter(ctx));
   app.use(translateRouter(ctx));
-  app.use(checklistRouter(ctx));
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
   app.use(errorHandler(ctx.log));

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { InputKind } from "../../docstore/documents.js";
+import type { PipelineSafety } from "../../pipeline/types.js";
 import type { Db } from "../index.js";
-import type { Warning } from "../../agents/types.js";
 
 export type JobStage =
   | "received"
@@ -15,7 +16,7 @@ export type JobStage =
 
 export const TERMINAL_STAGES: ReadonlySet<JobStage> = new Set(["done", "needs_review", "failed"]);
 
-export type InputKind = "text" | "pdf" | "audio";
+export type { InputKind };
 
 export interface JobRow {
   id: string;
@@ -23,8 +24,8 @@ export interface JobRow {
   stage: JobStage;
   input_kind: InputKind;
   error: string | null;
-  warnings: string;
-  meta: string;
+  safety: string | null;
+  meta: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -35,13 +36,15 @@ export interface JobRecord {
   stage: JobStage;
   inputKind: InputKind;
   error: string | null;
-  warnings: Warning[];
+  /** The deterministic safety-check result once the pipeline ran; null before that. */
+  safety: PipelineSafety | null;
   meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
 
-function parseJson<T>(s: string, fallback: T): T {
+function parseJson<T>(s: string | null | undefined, fallback: T): T {
+  if (!s) return fallback;
   try {
     return JSON.parse(s) as T;
   } catch {
@@ -56,7 +59,7 @@ function toRecord(r: JobRow): JobRecord {
     stage: r.stage,
     inputKind: r.input_kind,
     error: r.error,
-    warnings: parseJson<Warning[]>(r.warnings, []),
+    safety: parseJson<PipelineSafety | null>(r.safety, null),
     meta: parseJson<Record<string, unknown>>(r.meta, {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -82,24 +85,16 @@ export class JobsRepo {
   }
 
   async latestForLink(linkIdHash: string): Promise<JobRecord | undefined> {
-    const row = await this.db.get<JobRow>(
-      "SELECT * FROM jobs WHERE link_id_hash = ? ORDER BY created_at DESC LIMIT 1",
-      [linkIdHash],
-    );
+    const row = await this.db.get<JobRow>("SELECT * FROM jobs WHERE link_id_hash = ? ORDER BY created_at DESC LIMIT 1", [linkIdHash]);
     return row ? toRecord(row) : undefined;
   }
 
   async setStage(id: string, stage: JobStage, now: string, error?: string | null): Promise<void> {
-    await this.db.run("UPDATE jobs SET stage = ?, error = ?, updated_at = ? WHERE id = ?", [
-      stage,
-      error ?? null,
-      now,
-      id,
-    ]);
+    await this.db.run("UPDATE jobs SET stage = ?, error = ?, updated_at = ? WHERE id = ?", [stage, error ?? null, now, id]);
   }
 
-  async setWarnings(id: string, warnings: Warning[], now: string): Promise<void> {
-    await this.db.run("UPDATE jobs SET warnings = ?, updated_at = ? WHERE id = ?", [JSON.stringify(warnings), now, id]);
+  async setSafety(id: string, safety: PipelineSafety, now: string): Promise<void> {
+    await this.db.run("UPDATE jobs SET safety = ?, updated_at = ? WHERE id = ?", [JSON.stringify(safety), now, id]);
   }
 
   async mergeMeta(id: string, patch: Record<string, unknown>, now: string): Promise<void> {
@@ -109,9 +104,7 @@ export class JobsRepo {
   }
 
   async listUnfinished(): Promise<JobRecord[]> {
-    const rows = await this.db.all<JobRow>(
-      "SELECT * FROM jobs WHERE stage NOT IN ('done', 'needs_review', 'failed') ORDER BY created_at",
-    );
+    const rows = await this.db.all<JobRow>("SELECT * FROM jobs WHERE stage NOT IN ('done', 'needs_review', 'failed') ORDER BY created_at");
     return rows.map(toRecord);
   }
 }

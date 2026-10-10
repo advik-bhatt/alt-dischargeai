@@ -13,7 +13,7 @@ const server = app.listen(ctx.config.PORT, ctx.config.HOST, () => {
     {
       port: ctx.config.PORT,
       llm: ctx.simplifier.name,
-      transcribe: ctx.transcriber.name,
+      speech: ctx.speechToText.name,
       docStore: ctx.docStore.name,
       email: ctx.mailer.transportName,
       demoMode: ctx.config.DEMO_MODE,

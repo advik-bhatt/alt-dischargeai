@@ -4,27 +4,26 @@ import { LINK_TTL_MS } from "../config.js";
 import type { AppContext } from "../context.js";
 import { newDataKey } from "../crypto/envelope.js";
 import { hashLinkId, hashPrefix, newLinkId } from "../crypto/linkId.js";
+import type { RawDocument } from "../docstore/documents.js";
+import { SK } from "../docstore/types.js";
 import { badRequest, notFound } from "../errors.js";
-import { isEmptyText } from "../extract/text.js";
+import { isEmptyText, normalizeText } from "../extract/text.js";
 import { looksLikePdf } from "../extract/pdf.js";
-import { resolveLanguage } from "../languages.js";
 import { uploadMiddleware, type UploadedFiles } from "../middleware/upload.js";
+import { ENGLISH, normalizeLanguage } from "../pipeline/languages.js";
 
 const IngestFields = z.object({
   patientId: z.string().trim().min(1),
   text: z.string().optional(),
   language: z.string().trim().optional(),
-  caregiverEmail: z.string().trim().email().optional().or(z.literal("")),
-  caregiverApproved: z
-    .union([z.boolean(), z.string()])
-    .optional()
-    .transform((v) => (typeof v === "boolean" ? v : ["1", "true", "yes", "on"].includes(String(v ?? "").toLowerCase()))),
 });
 
 /**
- * POST /ingest (provider, multipart): patientId + exactly one of text | file (PDF) | audio.
- * Creates the link (hash + per-link key) and the job, answers 202 at once, and the pipeline runs
- * asynchronously. The raw link id appears in this response, the email and the patient row only.
+ * POST /ingest (provider, multipart): the note's main endpoint. `patientId` plus exactly one of
+ * `text` | `file` (PDF) | `audio`, and the provider-picked `language` (name or BCP-47 code; defaults
+ * to the patient's preferred language, then English). Stores the raw content in the document store,
+ * generates the random link id, answers 202 "ingestion started" at once; the pipeline runs after.
+ * The raw link id appears in this response, the email and the patient row only.
  */
 export function ingestRouter(ctx: AppContext): Router {
   const r = Router();
@@ -47,12 +46,16 @@ export function ingestRouter(ctx: AppContext): Router {
     const patient = await ctx.patients.getById(fields.patientId);
     if (!patient) throw notFound("patient_not_found", "Unknown patientId");
 
-    const language = fields.language ? (resolveLanguage(fields.language)?.code ?? fields.language) : patient.preferredLanguage ?? undefined;
+    const pickedRaw = fields.language || patient.preferredLanguage || ENGLISH;
+    const language = normalizeLanguage(pickedRaw);
+    if (!language) throw badRequest("invalid_language", `"${pickedRaw}" is not a BCP-47 code or a language name`);
+
     const linkId = newLinkId();
     const linkIdHash = hashLinkId(linkId);
     const createdAt = ctx.clock.now();
     const expiresAt = new Date(createdAt.getTime() + LINK_TTL_MS);
     const kind = pdf ? "pdf" : audio ? "audio" : "text";
+    const encKey = newDataKey();
 
     await ctx.links.create({
       linkIdHash,
@@ -60,24 +63,29 @@ export function ingestRouter(ctx: AppContext): Router {
       createdAt: createdAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
       keyVersion: ctx.config.KEY_VERSION,
-      encKey: newDataKey(),
-      language: language ?? null,
-      caregiverEmail: fields.caregiverEmail || null,
-      caregiverApproved: !!fields.caregiverEmail && fields.caregiverApproved,
+      encKey,
+      language,
     });
+    // Pasted text is stored raw before the 202; PDF text and transcripts are stored once extracted.
+    if (kind === "text") {
+      const raw: RawDocument = { text: normalizeText(text), kind, linkId };
+      await ctx.secureDocs.putJson({ linkIdHash, sk: SK.raw, key: encKey, keyVersion: ctx.config.KEY_VERSION, value: raw, expiresAtEpochSeconds: Math.floor(expiresAt.getTime() / 1000), createdAt: createdAt.toISOString() });
+    }
     const job = await ctx.jobs.create({
       linkIdHash,
       inputKind: kind,
       now: ctx.clock.nowIso(),
-      meta: { inputBytes: pdf?.size ?? audio?.size ?? Buffer.byteLength(text, "utf8"), mimeType: pdf?.mimetype ?? audio?.mimetype },
+      meta: { inputBytes: pdf?.size ?? audio?.size ?? Buffer.byteLength(text, "utf8"), mimeType: pdf?.mimetype ?? audio?.mimetype, language },
     });
-    await ctx.audit.append({ event: "link.created", linkIdHash, actor: "provider", at: ctx.clock.nowIso(), details: { patientId: patient.id, jobId: job.id, inputKind: kind, expiresAt: expiresAt.toISOString(), caregiver: !!fields.caregiverEmail, caregiverApproved: !!fields.caregiverEmail && fields.caregiverApproved } });
-    ctx.log.info({ jobId: job.id, link: hashPrefix(linkIdHash), inputKind: kind }, "ingest accepted");
+    await ctx.audit.append({ event: "link.created", linkIdHash, actor: "provider", at: ctx.clock.nowIso(), details: { patientId: patient.id, jobId: job.id, inputKind: kind, language, expiresAt: expiresAt.toISOString() } });
+    ctx.log.info({ jobId: job.id, link: hashPrefix(linkIdHash), inputKind: kind, language }, "ingest accepted");
 
     res.status(202).json({
+      status: "ingestion started",
       jobId: job.id,
       linkId,
       link: ctx.patientUrl(linkId),
+      language,
       expiresAt: expiresAt.toISOString(),
       statusUrl: `/jobs/${job.id}`,
       stage: job.stage,

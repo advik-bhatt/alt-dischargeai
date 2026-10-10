@@ -10,7 +10,7 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
       LLM_PROVIDER: "offline",
-      TRANSCRIBE_PROVIDER: "offline",
+      SPEECH_PROVIDER: "offline",
       DOC_STORE: "local",
       EMAIL_TRANSPORT: "console",
       EMAIL_QUEUE: "none",

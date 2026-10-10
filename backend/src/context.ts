@@ -1,12 +1,8 @@
-import { createSimplifier, type SimplifierAgent } from "./agents/simplifier.js";
-import { createTranscriber, type TranscriberAgent } from "./agents/transcriber.js";
-import { createTranslator, type TranslatorAgent } from "./agents/translator.js";
 import { Clock } from "./clock.js";
 import { LINK_TTL_DAYS, loadConfig, type Config } from "./config.js";
 import { migrate } from "./db/migrate.js";
 import { openDb, type Db } from "./db/index.js";
 import { AuditRepo } from "./db/repos/audit.js";
-import { ChecklistRepo } from "./db/repos/checklist.js";
 import { JobsRepo } from "./db/repos/jobs.js";
 import { LinksRepo } from "./db/repos/links.js";
 import { PatientsRepo } from "./db/repos/patients.js";
@@ -19,6 +15,9 @@ import { createLogger, type Logger } from "./logger.js";
 import { runIngestJob, type PendingInput } from "./pipeline/ingestJob.js";
 import { runPurge, type PurgeReport } from "./pipeline/purge.js";
 import { JobQueue } from "./pipeline/queue.js";
+import { createSimplifier, type Simplifier } from "./pipeline/simplify.js";
+import { createSpeechToText, type SpeechToText } from "./pipeline/speechToText.js";
+import { createTranslator, type Translator } from "./pipeline/translate.js";
 
 /** Everything a route or a job needs, wired once at boot. Tests build one per test file. */
 export interface AppContext {
@@ -30,12 +29,11 @@ export interface AppContext {
   links: LinksRepo;
   jobs: JobsRepo;
   audit: AuditRepo;
-  checklist: ChecklistRepo;
   docStore: DocumentStore;
   secureDocs: SecureDocs;
-  simplifier: SimplifierAgent;
-  translator: TranslatorAgent;
-  transcriber: TranscriberAgent;
+  simplifier: Simplifier;
+  translator: Translator;
+  speechToText: SpeechToText;
   mailer: Mailer;
   emailQueue?: EmailQueue;
   queue: JobQueue;
@@ -51,9 +49,9 @@ export interface CreateContextOptions {
   env?: Record<string, string | undefined>;
   overrides?: Partial<Config>;
   /** Swap any provider in tests. */
-  simplifier?: SimplifierAgent;
-  translator?: TranslatorAgent;
-  transcriber?: TranscriberAgent;
+  simplifier?: Simplifier;
+  translator?: Translator;
+  speechToText?: SpeechToText;
   mailer?: Mailer;
   seed?: boolean;
 }
@@ -64,13 +62,12 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const clock = new Clock();
   const db = await openDb(config);
   const ran = await migrate(db, () => clock.nowIso());
-  if (ran.length) log.info({ migrations: ran }, "migrations applied");
+  if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
 
   const patients = new PatientsRepo(db);
   const links = new LinksRepo(db);
   const jobs = new JobsRepo(db);
   const audit = new AuditRepo(db);
-  const checklist = new ChecklistRepo(db);
   const docStore = createDocumentStore(config, db);
   const secureDocs = new SecureDocs(docStore);
 
@@ -81,7 +78,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
 
   const simplifier = opts.simplifier ?? (await createSimplifier(config, log));
   const translator = opts.translator ?? (await createTranslator(config, log));
-  const transcriber = opts.transcriber ?? (await createTranscriber(config, log));
+  const speechToText = opts.speechToText ?? (await createSpeechToText(config, log));
   const mailer = opts.mailer ?? (await createMailer(config, log));
   const emailQueue =
     config.EMAIL_QUEUE === "sqs"
@@ -99,12 +96,11 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     links,
     jobs,
     audit,
-    checklist,
     docStore,
     secureDocs,
     simplifier,
     translator,
-    transcriber,
+    speechToText,
     mailer,
     emailQueue,
     queue,

@@ -3,7 +3,7 @@ import { createContext } from "../src/context.js";
 import { loadDotEnv } from "../src/dotenv.js";
 
 loadDotEnv();
-const ctx = await createContext({ env: { ...process.env, LLM_PROVIDER: "offline", TRANSCRIBE_PROVIDER: "offline", PURGE_INTERVAL_MS: "0" } });
+const ctx = await createContext({ env: { ...process.env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", PURGE_INTERVAL_MS: "0" } });
 const count = await ctx.patients.count();
-console.log(JSON.stringify({ database: ctx.config.DATABASE_URL ? "postgres" : ctx.config.DATABASE_FILE, patients: count }));
+console.log(JSON.stringify({ sql: ctx.db.dialect, patients: count }));
 await ctx.close();

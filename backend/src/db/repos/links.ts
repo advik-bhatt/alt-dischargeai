@@ -10,10 +10,11 @@ export interface LinkRow {
   expires_at: string;
   key_version: number;
   enc_key: Buffer | Uint8Array | null;
+  language: string;
+  languages: string;
+  audio_key: string | null;
   last_viewed_at: string | null;
-  language: string | null;
-  caregiver_email: string | null;
-  caregiver_approved: number;
+  emailed_at: string | null;
 }
 
 export interface LinkRecord {
@@ -24,10 +25,22 @@ export interface LinkRecord {
   expiresAt: string;
   keyVersion: number;
   encKey: Buffer | null;
+  /** The language the provider picked at ingest (BCP-47). */
+  language: string;
+  /** Languages the document store holds for this link, English first. */
+  languages: string[];
+  audioKey: string | null;
   lastViewedAt: string | null;
-  language: string | null;
-  caregiverEmail: string | null;
-  caregiverApproved: boolean;
+  emailedAt: string | null;
+}
+
+function parseLanguages(s: string | null | undefined): string[] {
+  try {
+    const v = JSON.parse(s ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function toRecord(r: LinkRow): LinkRecord {
@@ -39,10 +52,11 @@ function toRecord(r: LinkRow): LinkRecord {
     expiresAt: r.expires_at,
     keyVersion: Number(r.key_version),
     encKey: r.enc_key ? Buffer.from(r.enc_key) : null,
-    lastViewedAt: r.last_viewed_at,
     language: r.language,
-    caregiverEmail: r.caregiver_email,
-    caregiverApproved: Number(r.caregiver_approved) === 1,
+    languages: parseLanguages(r.languages),
+    audioKey: r.audio_key,
+    lastViewedAt: r.last_viewed_at,
+    emailedAt: r.emailed_at,
   };
 }
 
@@ -56,12 +70,12 @@ export class LinksRepo {
     expiresAt: string;
     keyVersion: number;
     encKey: Buffer;
-    language?: string | null;
-    caregiverEmail?: string | null;
-    caregiverApproved?: boolean;
+    language: string;
+    languages?: string[];
+    audioKey?: string | null;
   }): Promise<LinkRecord> {
     await this.db.run(
-      `INSERT INTO links (link_id_hash, patient_id, status, created_at, expires_at, key_version, enc_key, language, caregiver_email, caregiver_approved)
+      `INSERT INTO links (link_id_hash, patient_id, status, created_at, expires_at, key_version, enc_key, language, languages, audio_key)
        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.linkIdHash,
@@ -70,9 +84,9 @@ export class LinksRepo {
         input.expiresAt,
         input.keyVersion,
         input.encKey,
-        input.language ?? null,
-        input.caregiverEmail ?? null,
-        input.caregiverApproved ? 1 : 0,
+        input.language,
+        JSON.stringify(input.languages ?? []),
+        input.audioKey ?? null,
       ],
     );
     return (await this.getByHash(input.linkIdHash))!;
@@ -87,8 +101,28 @@ export class LinksRepo {
     await this.db.run("UPDATE links SET status = ? WHERE link_id_hash = ?", [status, hash]);
   }
 
+  async setLanguages(hash: string, languages: string[]): Promise<void> {
+    await this.db.run("UPDATE links SET languages = ? WHERE link_id_hash = ?", [JSON.stringify([...new Set(languages)]), hash]);
+  }
+
+  /** Records that the document store now holds this language for the link. Returns the full list. */
+  async addLanguage(hash: string, language: string): Promise<string[]> {
+    const current = (await this.getByHash(hash))?.languages ?? [];
+    const next = [...new Set([...current, language])];
+    await this.setLanguages(hash, next);
+    return next;
+  }
+
+  async setAudioKey(hash: string, audioKey: string | null): Promise<void> {
+    await this.db.run("UPDATE links SET audio_key = ? WHERE link_id_hash = ?", [audioKey, hash]);
+  }
+
   async touchViewed(hash: string, at: string): Promise<void> {
     await this.db.run("UPDATE links SET last_viewed_at = ? WHERE link_id_hash = ?", [at, hash]);
+  }
+
+  async markEmailed(hash: string, at: string): Promise<void> {
+    await this.db.run("UPDATE links SET emailed_at = ? WHERE link_id_hash = ?", [at, hash]);
   }
 
   /** Crypto-shredding: the data key is gone for good. */
@@ -106,9 +140,7 @@ export class LinksRepo {
   }
 
   async listByPatient(patientId: string): Promise<LinkRecord[]> {
-    const rows = await this.db.all<LinkRow>("SELECT * FROM links WHERE patient_id = ? ORDER BY created_at DESC", [
-      patientId,
-    ]);
+    const rows = await this.db.all<LinkRow>("SELECT * FROM links WHERE patient_id = ? ORDER BY created_at DESC", [patientId]);
     return rows.map(toRecord);
   }
 }

@@ -9,6 +9,10 @@ import type { LinkEmail } from "../src/email/templates.js";
 export const PROVIDER_KEY = "test-provider-key";
 export const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 
+/** Seeded ids: pt-0001 Harold Jennings (en), pt-0002 Marisol Reyes (es), pt-0003 Eleanor Whitfield (en). */
+export const PATIENT_EN = "pt-0001";
+export const PATIENT_ES = "pt-0002";
+
 export function exampleText(name = "example-1-chf"): string {
   return readFileSync(join(FIXTURES, "discharge-summaries", `${name}.txt`), "utf8");
 }
@@ -42,10 +46,23 @@ export interface TestApp {
   close: () => Promise<void>;
 }
 
+export const TEST_ENV: Record<string, string> = {
+  DATABASE_FILE: ":memory:",
+  DATABASE_URL: "",
+  LOG_LEVEL: "silent",
+  PURGE_INTERVAL_MS: "0",
+  PROVIDER_API_KEY: PROVIDER_KEY,
+  LLM_PROVIDER: "offline",
+  SPEECH_PROVIDER: "offline",
+  DOC_STORE: "local",
+  EMAIL_TRANSPORT: "console",
+  EMAIL_QUEUE: "none",
+};
+
 export async function createTestApp(opts: CreateContextOptions = {}): Promise<TestApp> {
   const mailer = recordingMailer();
   const ctx = await createContext({
-    env: { ...process.env, DATABASE_FILE: ":memory:", DATABASE_URL: "", LOG_LEVEL: "silent", PURGE_INTERVAL_MS: "0", DEMO_MODE: "true", PROVIDER_API_KEY: PROVIDER_KEY, LLM_PROVIDER: "offline", TRANSCRIBE_PROVIDER: "offline", DOC_STORE: "local", EMAIL_QUEUE: "none" },
+    env: { ...process.env, ...TEST_ENV, ...(opts.env ?? {}) },
     mailer,
     ...opts,
   });
@@ -59,14 +76,24 @@ export async function createTestApp(opts: CreateContextOptions = {}): Promise<Te
   };
 }
 
-/** Ingests text for the first seeded patient and waits for the pipeline to finish. */
-export async function ingestText(t: TestApp, text: string, extra: Record<string, string> = {}) {
-  const { body: list } = await t.provider(request(t.app).get("/patients"));
-  const patientId: string = list.patients[0].id;
+export interface Ingested {
+  patientId: string;
+  jobId: string;
+  linkId: string;
+  link: string;
+  language: string;
+  expiresAt: string;
+}
+
+/** Ingests text for a seeded patient and waits for the pipeline to finish. */
+export async function ingestText(t: TestApp, text: string, extra: Record<string, string> = {}, patientId: string = PATIENT_EN): Promise<Ingested> {
   let req = t.provider(request(t.app).post("/ingest")).field("patientId", patientId).field("text", text);
   for (const [k, v] of Object.entries(extra)) req = req.field(k, v);
   const res = await req;
   if (res.status !== 202) throw new Error(`ingest failed: ${res.status} ${JSON.stringify(res.body)}`);
   await t.ctx.queue.onIdle();
-  return { patientId, ...(res.body as { jobId: string; linkId: string; link: string; expiresAt: string }) };
+  return { patientId, ...(res.body as Omit<Ingested, "patientId">) };
 }
+
+export const AI_KEYS = ["language", "steps", "medications", "followUps", "warnings"];
+export const VIEW_KEYS = [...AI_KEYS, "expiresAt", "daysLeft", "availableLanguages", "fromCache"];

@@ -51,11 +51,8 @@ export const ConfigSchema = z.object({
   ANTHROPIC_API_KEY: optionalString,
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
 
-  TRANSCRIBE_PROVIDER: z.enum(["offline", "aws"]).default("offline"),
-  TRANSCRIBE_BUCKET: optionalString,
-  TRANSCRIBE_OUTPUT_BUCKET: optionalString,
-
   SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
+  TRANSCRIBE_OUTPUT_BUCKET: optionalString,
   AUDIO_BUCKET: optionalString,
 
   RECORD_STORE: z.enum(["local", "dynamo"]).default("local"),
