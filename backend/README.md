@@ -55,6 +55,27 @@ curl -s -H "x-provider-key: dev-provider-key" "http://localhost:4000/patients?q=
 
 Checked on 2026-10-10 against `npm run dev` on this commit: six synthetic patients with the nine keys (`pt-0004` has no caregiver, so both caregiver keys are `null`), 401 without the key, one match for `reyes`.
 
+### Task 2: `pdfToText`
+
+The tasks doc defines it as a function the ingester calls, not a route, so it is tested by ingesting a PDF and reading the job. The `data` below is a one-page PDF (885 bytes, `fixtures/discharge-summaries/curl-sample.pdf`) as base64:
+
+```sh
+# Ingest the PDF; the response carries the jobId and the sumId
+curl -s -H "x-provider-key: dev-provider-key" -H "content-type: application/json" \
+  -d '{"type":"pdf","patientID":"pt-0001","data":"JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggMzQwID4+CnN0cmVhbQpCVAovRjEgMTEgVGYKMTQgVEwKNzIgNzIwIFRkCihEaXNjaGFyZ2UgZGlhZ25vc2lzOiBoZWFydCBmYWlsdXJlLikgVGoKVCogKE5ldyBtZWRpY2F0aW9uczopIFRqClQqICgtIEZ1cm9zZW1pZGUgNDAgbWcgYnkgbW91dGggb25jZSBkYWlseSBmb3Igc3dlbGxpbmcpIFRqClQqIChEaXNjaGFyZ2UgaW5zdHJ1Y3Rpb25zOikgVGoKVCogKC0gV2VpZ2ggeW91cnNlbGYgZXZlcnkgbW9ybmluZykgVGoKVCogKC0gRm9sbG93IHVwIHdpdGggY2FyZGlvbG9neSB3aXRoaW4gMSB3ZWVrKSBUagpUKiAoUmV0dXJuIHByZWNhdXRpb25zOikgVGoKVCogKC0gQ2FsbCA5MTEgZm9yIGNoZXN0IHBhaW4pIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDAzMTEgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA2IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgo3MDIKJSVFT0YK"}' \
+  http://localhost:4000/ingest
+
+# Paste the jobId from that response: stage "done", meta.pdfPages 1, meta.pdfEngine "pdf-parse", meta.sourceChars 247
+curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/jobs/<jobId>
+
+# Paste the sumId: the summary built from the extracted text (Furosemide 40 mg, once a day by mouth, new)
+curl -s "http://localhost:4000/llm-sumary?sum-id=<sumId>"
+```
+
+Checked on 2026-10-10 against `npm run dev` on this commit: 202, then `done` with `verified: true`, one page, 247 characters, and the PDF saved as `data/pdf/<sumId>.pdf` (the local twin of `emrpdf-rh`). `npm test` checks the function returns those eight lines exactly and that this README carries that exact PDF.
+
+With the default `LLM_PROVIDER=offline`, the simplifier is rule-based: it reads summaries laid out with headings ("New medications:", "Discharge instructions:", "Return precautions:") and bulleted lines, like the samples here and the five examples in `fixtures/`. Free prose it cannot place is caught by the safety check and held for review (`423`), never shown with a medication missing. Start the server with `LLM_PROVIDER=bedrock` and AWS credentials to have Claude handle any layout.
+
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
@@ -216,7 +237,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 90 passing of 90, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 92 passing of 92, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 

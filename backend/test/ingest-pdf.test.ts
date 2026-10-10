@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,6 +21,28 @@ describe("POST /ingest with type pdf (team contract), pdfToText, and the multipa
     expect(r.text).toContain("Furosemide 40 mg");
     expect(r.text).toContain("Amoxicillin-clavulanate 875/125 mg");
     await expect(pdfToText(Buffer.from("hello"))).rejects.toThrow(/not a PDF/);
+  });
+
+  it("pdfToText reads the README's inline curl sample line for line, and the README carries exactly that PDF", async () => {
+    const buf = examplePdf("curl-sample");
+    const r = await pdfToText(buf);
+    expect(r).toEqual({
+      text: "Discharge diagnosis: heart failure.\nNew medications:\n- Furosemide 40 mg by mouth once daily for swelling\nDischarge instructions:\n- Weigh yourself every morning\n- Follow up with cardiology within 1 week\nReturn precautions:\n- Call 911 for chest pain",
+      pages: 1,
+      engine: "pdf-parse",
+    });
+    const readme = readFileSync(join(import.meta.dirname, "..", "README.md"), "utf8");
+    expect(readme).toContain(buf.toString("base64"));
+  });
+
+  it("the README's curl sample PDF goes through POST /ingest offline: extracted, verified, emailed", async () => {
+    const { sumId, jobId } = await ingestPdf(t, examplePdf("curl-sample"));
+    const job = await t.provider(request(t.app).get(`/jobs/${jobId}`));
+    expect(job.body).toMatchObject({ stage: "done", verified: true, inputKind: "pdf" });
+    expect(job.body.meta).toMatchObject({ pdfPages: 1, pdfEngine: "pdf-parse", pdfStore: "local" });
+    expect((await t.ctx.summaries.get(sumId))?.["raw-text"]).toContain("Furosemide 40 mg by mouth once daily");
+    const summary = await request(t.app).get(`/llm-sumary?sum-id=${sumId}`);
+    expect(summary.body["llm-summary"].medications).toEqual([{ name: "Furosemide", dose: "40 mg", howOften: "once a day by mouth", status: "new", why: "For swelling." }]);
   });
 
   it("decodes the PDF from base64 with or without a data: prefix, and rejects garbage", () => {
