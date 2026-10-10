@@ -19,7 +19,7 @@ Branch `backend`. The team's backend tasks doc first (exact routes, keys and Dyn
   |  SQLite local      |   |  speechToText        |        |  DynamoDB discharge-summaries |
   |  MariaDB on RDS    |   |  simplify (Bedrock)  |        |   hash key uid, TTL expiresAt |
   |   via mysql2 + TLS |   |  safetyChecks        |        |   one plain item per summary  |
-  |  patients,         |   |  translate (Bedrock) |        |  SQL twin (summaries table)   |
+  |  patientinfo (ro), |   |  translate (Bedrock) |        |  SQL twin (summaries table)   |
   |  activeLinks, jobs,|   |  runPipeline         |        |                               |
   |  audit_log         |   |                      |        |                               |
   +--------------------+   +---------------------+        +-------------------------------+
@@ -47,7 +47,8 @@ src/
   app.ts              routes, provider auth on /patients /ingest /jobs /synthesize, rate limit on patient paths
   clock.ts            app clock; DEMO_NOW pins it at boot
   db/                 index.ts (SqliteDb, MySqlDb, DATABASE_URL parsing), migrate.ts (per-dialect rewrites),
-                      migrations/0001_init.sql (portable), repos/{patients,activeLinks,jobs,audit}.ts, seed.ts
+                      migrations/0001_init.sql (portable), 0002_patientinfo.{sqlite,mysql}.sql, repos/{patients,activeLinks,jobs,audit}.ts,
+                      seed.ts (local SQLite only, npm run seed)
   docstore/           types.ts (the one-item-per-summary shape), dynamo.ts, local.ts (SQL twin)
   crypto/             sumId.ts (128-bit random path, base64url; logRef = 8 hex of its sha256 for logs)
   pipeline/           runPipeline.ts, simplify.ts, translate.ts, speechToText.ts, safetyChecks.ts, languages.ts,
@@ -76,14 +77,14 @@ test/                 15 vitest files
 
 SQL, one portable schema (`src/db/migrations/0001_init.sql`), `VARCHAR` for every keyed column so MariaDB can index it, ISO timestamps from the app clock:
 
-- `patients(id, first_name, last_name, date_of_birth, zip_code, email, phone, caregiver_email, caregiver_name, preferred_language, created_at)`; `GET /patients` maps them to `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName`.
+- The team's `patientinfo` (read only, never seeded by the server): columns discovered at startup and mapped to `GET /patients`'s `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName` by name, ignoring case and underscores (`src/db/repos/patients.ts`). `0002_patientinfo.*.sql` creates it with those columns only where it is missing.
 - `activeLinks(id AUTOINCREMENT, sumId UNIQUE, patientID FK, createdAt, expiresAt = createdAt + 30 days, status pending|ready|needs_review|failed|expired|purged, language, languages JSON, pdfKey, audioKey, lastViewedAt, emailedAt)`: the tasks doc's table, the `sumId` stored as-is.
 - `jobs(id, sum_id FK, stage, input_kind, error, safety JSON, meta JSON, created_at, updated_at)`.
 - `audit_log(id AUTOINCREMENT, event, sum_id, actor provider|patient|system, at, details JSON)`; deletion receipts are rows with `event = deletion.receipt`.
 - `summaries(uid PK, item JSON, expires_at, created_at)`: the SQL twin of the DynamoDB table.
 - `schema_migrations(name, applied_at)`.
 
-MySQL rewrites in `migrate.ts`: `AUTOINCREMENT -> AUTO_INCREMENT`, `TEXT -> MEDIUMTEXT`, `CREATE INDEX IF NOT EXISTS -> CREATE INDEX` (duplicate index errors ignored). Statements are split and run one by one. The summary upsert is spelled per dialect (`ON CONFLICT (uid) DO UPDATE` / `ON DUPLICATE KEY UPDATE`).
+MySQL rewrites in `migrate.ts`: `AUTOINCREMENT -> AUTO_INCREMENT`, `TEXT -> MEDIUMTEXT`, `CREATE INDEX IF NOT EXISTS -> CREATE INDEX` (duplicate index errors ignored). Statements are split and run one by one. Files named `NNNN_x.sqlite.sql` / `NNNN_x.mysql.sql` run on that dialect only (0002 rebuilds `activeLinks` without the old foreign key on SQLite and drops it on MySQL, ignoring "does not exist"). The summary upsert is spelled per dialect (`ON CONFLICT (uid) DO UPDATE` / `ON DUPLICATE KEY UPDATE`).
 
 DynamoDB `discharge-summaries` (single hash key `uid`, TTL `expiresAt`), one plain item per summary:
 

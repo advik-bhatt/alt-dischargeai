@@ -10,7 +10,7 @@ import { createTestApp, type TestApp } from "./helpers.js";
 /** The whole public surface of this branch: the tasks doc's routes, the note's endpoints and the diagram's additions, nothing else. */
 const SURFACE: Record<string, string[]> = {
   "/health": ["get"],
-  "/patients": ["get", "post"],
+  "/patients": ["get"],
   "/patients/{id}": ["get"],
   "/ingest": ["post"],
   "/jobs/{jobId}": ["get"],

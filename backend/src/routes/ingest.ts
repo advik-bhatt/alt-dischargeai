@@ -12,11 +12,14 @@ import { uploadMiddleware, type UploadedFiles } from "../middleware/upload.js";
 import { ENGLISH, normalizeLanguage } from "../pipeline/languages.js";
 
 /** The team contract's body: { "data": ..., "type": "text" | "pdf", "patientID": ... } plus the optional language. */
+/** The patients table's id may be a number (an INT column) or text; both arrive here as text. */
+const PatientIdField = z.union([z.string().trim(), z.number().int().transform(String)]).optional();
+
 const JsonBody = z.object({
   data: z.unknown().optional(),
   type: z.unknown().optional(),
-  patientID: z.string().trim().optional(),
-  patientId: z.string().trim().optional(),
+  patientID: PatientIdField,
+  patientId: PatientIdField,
   language: z.string().trim().optional(),
 });
 

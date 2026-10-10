@@ -163,7 +163,9 @@ export async function emailLinks(ctx: AppContext, link: ActiveLink): Promise<{ p
   const patient = await ctx.patients.getById(link.patientID);
   if (!patient) return { patient: false, caregiver: false };
   const url = ctx.patientUrl(link.sumId);
-  const deliveries: { kind: "patient" | "caregiver"; mail: LinkEmail }[] = [{ kind: "patient", mail: patientLinkEmail({ to: patient.email, link: url, expiresAt: link.expiresAt }) }];
+  const deliveries: { kind: "patient" | "caregiver"; mail: LinkEmail }[] = [];
+  if (patient.email) deliveries.push({ kind: "patient", mail: patientLinkEmail({ to: patient.email, link: url, expiresAt: link.expiresAt }) });
+  else await ctx.audit.append({ event: "email.skipped", sumId: link.sumId, actor: "system", at: ctx.clock.nowIso(), details: { kind: "patient", reason: "no_email_on_patient_row" } });
   if (patient.caregiverEmail) deliveries.push({ kind: "caregiver", mail: caregiverLinkEmail({ to: patient.caregiverEmail, link: url, expiresAt: link.expiresAt }) });
 
   for (const { kind, mail } of deliveries) {
@@ -176,6 +178,6 @@ export async function emailLinks(ctx: AppContext, link: ActiveLink): Promise<{ p
       await ctx.audit.append({ event: "email.sent", sumId: link.sumId, actor: "system", at, details: { kind, transport: sent.transport, messageId: sent.messageId } });
     }
   }
-  await ctx.activeLinks.markEmailed(link.sumId, ctx.clock.nowIso());
-  return { patient: true, caregiver: deliveries.length > 1 };
+  if (deliveries.length) await ctx.activeLinks.markEmailed(link.sumId, ctx.clock.nowIso());
+  return { patient: deliveries.some((d) => d.kind === "patient"), caregiver: deliveries.some((d) => d.kind === "caregiver") };
 }

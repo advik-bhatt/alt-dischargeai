@@ -63,6 +63,8 @@ export const ConfigSchema = z.object({
   MYSQL_POOL_SIZE: int(5),
   /** AWS connection step 1: the public RDS certificate bundle (scripts/fetch-rds-bundle.sh). */
   RDS_CA_BUNDLE: z.string().default("certs/global-bundle.pem"),
+  /** The team's patient table in the same database (the infra branch reads `SELECT * FROM patientinfo`). Read-only for this backend. */
+  PATIENTS_TABLE: z.string().regex(/^[A-Za-z0-9_]+$/, "a plain table name").default("patientinfo"),
 
   /** auto: DynamoDB when Secrets Manager supplied the table, else the SQL twin. */
   DOC_STORE: z.enum(["auto", "local", "dynamo"]).default("auto"),

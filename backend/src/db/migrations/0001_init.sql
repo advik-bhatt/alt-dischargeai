@@ -4,25 +4,12 @@
 -- dialect-specific tokens (AUTOINCREMENT, TEXT sizes) for MySQL. Timestamps are ISO-8601 strings
 -- produced by the app clock, never by the database, so expiry is computed in one place.
 
--- GET /patients returns ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail,
--- caregiverName (the team contract); the columns below hold exactly that plus the preferred language.
-CREATE TABLE IF NOT EXISTS patients (
-  id VARCHAR(64) PRIMARY KEY,
-  first_name VARCHAR(120) NOT NULL,
-  last_name VARCHAR(120) NOT NULL,
-  date_of_birth VARCHAR(10) NOT NULL,
-  zip_code VARCHAR(16) NOT NULL,
-  email VARCHAR(254) NOT NULL,
-  phone VARCHAR(32) NOT NULL,
-  caregiver_email VARCHAR(254),
-  caregiver_name VARCHAR(160),
-  preferred_language VARCHAR(16),
-  created_at VARCHAR(32) NOT NULL
-);
+-- Patients are NOT created here: they live in the team's own table (`patientinfo`, see
+-- 0002_patientinfo.*.sql and src/db/repos/patients.ts), which this backend only reads.
 
 -- The team contract's activeLinks table: POST /ingest generates a random path (sumId), stores it here
 -- as-is (teammates join on it) and uses the same value as the DynamoDB uid. status follows the link
--- through its life; expiresAt = createdAt + 30 days. The remaining columns are the backend's own
+-- through its life; expiresAt = createdAt + 30 days. patientID is the id from the patients table. The remaining columns are the backend's own
 -- bookkeeping (languages held, object keys in the buckets, view and email timestamps).
 CREATE TABLE IF NOT EXISTS activeLinks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +25,6 @@ CREATE TABLE IF NOT EXISTS activeLinks (
   lastViewedAt VARCHAR(32),
   emailedAt VARCHAR(32),
   CONSTRAINT uq_activeLinks_sumId UNIQUE (sumId),
-  CONSTRAINT fk_activeLinks_patient FOREIGN KEY (patientID) REFERENCES patients (id),
   CONSTRAINT ck_activeLinks_status CHECK (status IN ('pending', 'ready', 'needs_review', 'failed', 'expired', 'purged'))
 );
 CREATE INDEX IF NOT EXISTS activeLinks_expiresAt ON activeLinks (expiresAt);

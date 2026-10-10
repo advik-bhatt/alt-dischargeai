@@ -69,6 +69,7 @@ export interface CreateContextOptions {
   translator?: Translator;
   speechToText?: SpeechToText;
   mailer?: Mailer;
+  /** Write the six synthetic patients into a local SQLite patients table. Tests only; refused on MySQL. */
   seed?: boolean;
   /** Re-enqueue jobs left unfinished by a previous process (the API server does; one-shot scripts must not). */
   resumeJobs?: boolean;
@@ -84,7 +85,12 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const ran = await migrate(db, () => clock.nowIso());
   if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
 
-  const patients = new PatientsRepo(db);
+  // The team's patient table, read-only. Its columns are mapped once here; startup stops with the real
+  // column list when the table is missing or has no id column, instead of serving the wrong data.
+  const patients = new PatientsRepo(db, config.PATIENTS_TABLE);
+  const patientsTable = await patients.init();
+  // Column names only, as "field=column" strings (field-named keys would be caught by the PHI redaction).
+  log.info({ table: patientsTable.table, mapping: Object.entries(patientsTable.mapped).map(([f, c]) => `${f}=${c}`), unmappedContractKeys: patientsTable.unmapped }, "patients table");
   const activeLinks = new ActiveLinksRepo(db);
   const jobs = new JobsRepo(db);
   const audit = new AuditRepo(db);
@@ -95,7 +101,9 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const stores = await createObjectStores(config, secretResolved, log);
   const receipts = await createAuditSink(config, { audit });
 
-  if (opts.seed !== false) {
+  // Never on by default: only the test suite asks for the synthetic patients (npm run seed is the
+  // manual path), and seedPatients refuses anything but local SQLite.
+  if (opts.seed === true) {
     const added = await seedPatients(patients, audit, () => clock.nowIso());
     if (added) log.info({ added }, "seeded synthetic patients");
   }

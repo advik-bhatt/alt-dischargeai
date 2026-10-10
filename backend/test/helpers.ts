@@ -72,6 +72,8 @@ export async function createTestApp(opts: CreateContextOptions = {}): Promise<Te
   const ctx = await createContext({
     env: { ...process.env, ...TEST_ENV, PDF_DIR: join(dir, "pdf"), AUDIO_DIR: join(dir, "audio"), ...(env ?? {}) },
     mailer,
+    // The suite runs on the six synthetic patients in an in-memory SQLite table; the server never seeds.
+    seed: true,
     ...rest,
   });
   const app = buildApp(ctx);

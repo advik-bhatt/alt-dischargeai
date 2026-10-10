@@ -2,6 +2,7 @@
 # DischargeAI demo against a running backend (default: offline providers, no keys needed), on the
 # team's backend tasks doc routes:
 #   npm run dev            (in another terminal, from backend/)
+#   npm run seed           (once, on a local SQLite file: six synthetic patients; never on MySQL)
 #   npm run demo           (this script, from backend/ or anywhere)
 # Story: GET /patients -> POST /ingest {data,type:"text",patientID,language} for Example 1 (CHF) in
 #        Spanish -> 202 "ingestion started" with the sumId -> the server prints the email to the patient
@@ -31,6 +32,7 @@ echo "config source: $(curl -sS "$BASE_URL/health" | json config.source)"
 
 step "2. GET /patients (provider key): ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName"
 PATIENTS=$(curl -sS -H "x-provider-key: $KEY" "$BASE_URL/patients")
+[ "$(printf '%s' "$PATIENTS" | json patients.length)" != "0" ] || { echo "GET /patients is empty: the patients table (patientinfo) has no rows. On a local SQLite file run 'npm run seed' once, then run the demo again."; exit 1; }
 PATIENT_ID="${PATIENT_ID:-$(printf '%s' "$PATIENTS" | json patients.0.ID)}"
 printf '%s' "$PATIENTS" | json patients.0
 echo "patientID=$PATIENT_ID"

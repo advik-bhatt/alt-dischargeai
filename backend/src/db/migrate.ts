@@ -10,6 +10,8 @@ const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
  *                  CREATE INDEX IF NOT EXISTS -> CREATE INDEX (MariaDB accepts IF NOT EXISTS, MySQL 8
  *                  does not; a duplicate index is ignored instead).
  *   SQLite: as written.
+ * A file named `NNNN_name.sqlite.sql` or `NNNN_name.mysql.sql` runs only on that dialect, for the few
+ * changes the two engines cannot share (rebuilding a table in SQLite, dropping a foreign key in MySQL).
  */
 export function toDialect(sql: string, dialect: Dialect): string {
   if (dialect !== "mysql") return sql;
@@ -25,16 +27,31 @@ function isDuplicateIndex(err: unknown): boolean {
   return e?.code === "ER_DUP_KEYNAME" || e?.errno === 1061;
 }
 
-/** Tables the current schema must have; a database migrated before the team contract lacks them. */
-export const REQUIRED_TABLES = ["patients", "activeLinks", "jobs", "audit_log", "summaries"] as const;
+/** MySQL 1091: dropping a foreign key that is not there (a database created by the current 0001). */
+function isMissingKey(err: unknown): boolean {
+  const e = err as { code?: string; errno?: number };
+  return e?.code === "ER_CANT_DROP_FIELD_OR_KEY" || e?.errno === 1091;
+}
+
+/** `0002_x.sqlite.sql` runs on SQLite only, `0002_x.mysql.sql` on MySQL only, `0001_x.sql` on both. */
+export function migrationFilesFor(files: string[], dialect: Dialect): string[] {
+  return files
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => {
+      const m = /\.(sqlite|mysql)\.sql$/.exec(f);
+      return !m || m[1] === dialect;
+    })
+    .sort();
+}
+
+/** Tables the backend's own schema must have (the patients table is the team's and is checked on its own). */
+export const REQUIRED_TABLES = ["activeLinks", "jobs", "audit_log", "summaries"] as const;
 
 /** Applies `migrations/*.sql` in name order, once each, recording them in schema_migrations. */
 export async function migrate(db: Db, now: () => string = () => new Date().toISOString()): Promise<string[]> {
   await db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(120) PRIMARY KEY, applied_at VARCHAR(32) NOT NULL)");
   const applied = new Set((await db.all<{ name: string }>("SELECT name FROM schema_migrations")).map((r) => r.name));
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = migrationFilesFor(readdirSync(MIGRATIONS_DIR), db.dialect);
   const ran: string[] = [];
   for (const file of files) {
     if (applied.has(file)) continue;
@@ -44,6 +61,7 @@ export async function migrate(db: Db, now: () => string = () => new Date().toISO
         await db.exec(statement);
       } catch (err) {
         if (db.dialect === "mysql" && /^CREATE INDEX/i.test(statement) && isDuplicateIndex(err)) continue;
+        if (db.dialect === "mysql" && /DROP FOREIGN KEY/i.test(statement) && isMissingKey(err)) continue;
         throw err;
       }
     }

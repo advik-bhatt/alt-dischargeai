@@ -62,17 +62,17 @@ components:
         error: { type: string, description: Stable machine-readable code }
     Patient:
       type: object
-      description: "The team contract's patient shape (backend tasks doc, GET /patients), exactly these nine keys."
+      description: "The team contract's patient shape (backend tasks doc, GET /patients), exactly these nine keys, read from the team's patients table (patientinfo). Values are as the table holds them; a key whose column the table lacks is null."
       required: [ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName]
       additionalProperties: false
       properties:
-        ID: { type: string, example: pt-0001 }
-        DOB: { type: string, format: date, example: "1954-03-18" }
-        FirstName: { type: string }
-        LastName: { type: string }
-        ZipCode: { type: string }
-        email: { type: string, format: email }
-        phoneNumber: { type: string }
+        ID: { oneOf: [{ type: string }, { type: integer }], description: "The table's id as stored: a number when the column is INT" }
+        DOB: { type: string, format: date, nullable: true, example: "1954-03-18" }
+        FirstName: { type: string, nullable: true }
+        LastName: { type: string, nullable: true }
+        ZipCode: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        phoneNumber: { type: string, nullable: true }
         caregiverEmail: { type: string, format: email, nullable: true }
         caregiverName: { type: string, nullable: true }
     PatientDetail:
@@ -92,20 +92,6 @@ components:
                 createdAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
                 languages: { type: array, items: { type: string } }
-    NewPatient:
-      type: object
-      description: "The camelCase fields below, or the contract spellings (FirstName, LastName, DOB, ZipCode, phoneNumber)."
-      required: [firstName, lastName, dateOfBirth, zipCode, email, phone]
-      properties:
-        firstName: { type: string }
-        lastName: { type: string }
-        dateOfBirth: { type: string, format: date }
-        zipCode: { type: string }
-        email: { type: string, format: email }
-        phone: { type: string }
-        caregiverEmail: { type: string, format: email, nullable: true }
-        caregiverName: { type: string, nullable: true }
-        preferredLanguage: { type: string }
     Step:
       type: object
       required: [id, text]
@@ -337,18 +323,6 @@ paths:
                 properties:
                   patients: { type: array, items: { $ref: "#/components/schemas/Patient" } }
         "401": { description: Missing or wrong x-provider-key, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-    post:
-      tags: [provider]
-      security: [{ providerKey: [] }]
-      summary: Create a patient (used to seed; the SQL patient table)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/NewPatient" }
-      responses:
-        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Patient" } } } }
-        "400": { description: Validation error with zod issues }
   /patients/{id}:
     get:
       tags: [provider]
@@ -387,7 +361,7 @@ paths:
               properties:
                 data: { type: string, description: "The text (type text) or the PDF as base64 (type pdf)" }
                 type: { type: string, enum: [text, pdf] }
-                patientID: { type: string, example: pt-0001 }
+                patientID: { oneOf: [{ type: string }, { type: integer }], description: "The patient's ID from GET /patients (text or number)" }
                 language: { type: string, description: "Optional provider-picked language (BCP-47 or a name such as Spanish). Default: the patient's preferred language, then English" }
             examples:
               text:
