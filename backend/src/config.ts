@@ -56,8 +56,10 @@ export const ConfigSchema = z.object({
   /** AWS connection step 1: the public RDS certificate bundle (scripts/fetch-rds-bundle.sh). */
   RDS_CA_BUNDLE: z.string().default("certs/global-bundle.pem"),
 
-  DOC_STORE: z.enum(["local", "dynamo"]).default("local"),
-  DYNAMO_TABLE: z.string().default("dischargeai-docs"),
+  /** auto: DynamoDB when Secrets Manager supplied the table, else the SQL twin. */
+  DOC_STORE: z.enum(["auto", "local", "dynamo"]).default("auto"),
+  /** The team table (hash key uid, TTL expiresAt). Filled from the secret's dynamodb-table. */
+  DYNAMO_TABLE: z.string().default("discharge-summaries"),
   /** Name of the table's hash key attribute (the secret's dynamodb-table-pk). */
   DYNAMO_PK: z.string().default("uid"),
   DYNAMO_ENDPOINT: optionalString,
@@ -73,8 +75,6 @@ export const ConfigSchema = z.object({
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
   AUDIO_BUCKET: optionalString,
 
-  RECORD_STORE: z.enum(["local", "dynamo"]).default("local"),
-  RECORDS_DB_FILE: z.string().default("data/records.db"),
   AUDIO_STORE: z.enum(["local", "s3"]).default("local"),
   AUDIO_DIR: z.string().default("data/audio"),
   AUDIT_SINK: z.enum(["file", "console", "dynamo"]).default("file"),

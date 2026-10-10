@@ -42,7 +42,7 @@ describe("SQL layer: one portable schema, two dialects", () => {
   });
 
   it("spells the document upsert per dialect", () => {
-    expect(upsertDocumentSql("sqlite")).toContain("ON CONFLICT (pk, sk) DO UPDATE SET ciphertext = excluded.ciphertext");
+    expect(upsertDocumentSql("sqlite")).toContain("ON CONFLICT (uid) DO UPDATE SET ciphertext = excluded.ciphertext");
     expect(upsertDocumentSql("mysql")).toContain("ON DUPLICATE KEY UPDATE ciphertext = VALUES(ciphertext)");
     expect(upsertDocumentSql("mysql")).not.toContain("excluded");
   });

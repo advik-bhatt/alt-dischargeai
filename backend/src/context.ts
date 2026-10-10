@@ -7,7 +7,7 @@ import { JobsRepo } from "./db/repos/jobs.js";
 import { LinksRepo } from "./db/repos/links.js";
 import { PatientsRepo } from "./db/repos/patients.js";
 import { seedPatients } from "./db/seed.js";
-import { createDocumentStore, type DocumentStore } from "./docstore/index.js";
+import { createDocumentStore, resolveDocStore, type DocumentStore } from "./docstore/index.js";
 import { SecureDocs } from "./docstore/secure.js";
 import { createMailer, type Mailer } from "./email/mailer.js";
 import { createSqsEmailQueue, type EmailQueue } from "./email/queue.js";
@@ -79,7 +79,9 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const links = new LinksRepo(db);
   const jobs = new JobsRepo(db);
   const audit = new AuditRepo(db);
-  const docStore = createDocumentStore(config, db);
+  const secrets = opts.secrets ?? NO_SECRETS;
+  const docStore = createDocumentStore(config, db, resolveDocStore(config, secrets.source === "secrets-manager"));
+  log.info({ docStore: docStore.describe }, "document store");
   const secureDocs = new SecureDocs(docStore);
 
   if (opts.seed !== false) {
@@ -100,7 +102,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
 
   const ctx: AppContext = {
     config,
-    secrets: opts.secrets ?? NO_SECRETS,
+    secrets,
     log,
     clock,
     db,

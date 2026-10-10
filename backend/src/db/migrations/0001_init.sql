@@ -74,16 +74,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS audit_link ON audit_log (link_id_hash);
 CREATE INDEX IF NOT EXISTS audit_event ON audit_log (event);
 
--- LocalDocumentStore: the SQL twin of the DynamoDB table (same item shape, expires_at = TTL attribute).
+-- LocalDocumentStore: the SQL twin of DynamoDB `discharge-summaries`. Same item shape: uid is the
+-- hash key (<linkIdHash>#raw | #simplified | #translation#<lang>), expires_at is the TTL attribute.
 CREATE TABLE IF NOT EXISTS documents (
-  pk VARCHAR(80) NOT NULL,
-  sk VARCHAR(40) NOT NULL,
+  uid VARCHAR(160) PRIMARY KEY,
+  pk VARCHAR(64) NOT NULL,
+  sk VARCHAR(64) NOT NULL,
   ciphertext BLOB NOT NULL,
   iv BLOB NOT NULL,
   tag BLOB NOT NULL,
   key_version INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
-  created_at VARCHAR(32) NOT NULL,
-  PRIMARY KEY (pk, sk)
+  created_at VARCHAR(32) NOT NULL
 );
+CREATE INDEX IF NOT EXISTS documents_pk ON documents (pk);
 CREATE INDEX IF NOT EXISTS documents_expires_at ON documents (expires_at);

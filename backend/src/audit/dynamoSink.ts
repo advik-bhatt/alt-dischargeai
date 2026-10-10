@@ -1,11 +1,10 @@
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { createDynamoClient } from "../data/dynamo/records.js";
+import { createDynamoClient } from "../docstore/dynamo.js";
 import type { AuditSink, DeletionReceipt } from "./receipts.js";
 
 /**
  * Audit table `discharge_audit`: partition key `tokenHash` (S), sort key `receiptId` (S), no TTL
- * (receipts are the proof that data was deleted and must outlive it). `scripts/create-dynamo-table.ts`
- * creates it next to discharge_records. IAM: dynamodb:PutItem, Query, Scan (show-audit only).
+ * (receipts are the proof that data was deleted and must outlive it). IAM: dynamodb:PutItem, Query, Scan (show-audit only).
  */
 export class DynamoAuditSink implements AuditSink {
   readonly name = "dynamo" as const;

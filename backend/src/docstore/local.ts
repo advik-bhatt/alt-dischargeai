@@ -1,7 +1,8 @@
 import type { Db } from "../db/index.js";
-import type { DocItem, DocumentStore } from "./types.js";
+import { uidFor, type DocItem, type DocumentStore } from "./types.js";
 
 interface Row {
+  uid: string;
   pk: string;
   sk: string;
   ciphertext: Buffer | Uint8Array;
@@ -27,28 +28,33 @@ function toItem(r: Row): DocItem {
 
 /** The upsert is the one statement the two engines spell differently. */
 export function upsertDocumentSql(dialect: Db["dialect"]): string {
-  const insert = "INSERT INTO documents (pk, sk, ciphertext, iv, tag, key_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+  const insert = "INSERT INTO documents (uid, pk, sk, ciphertext, iv, tag, key_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
   if (dialect === "mysql") {
     return `${insert} ON DUPLICATE KEY UPDATE ciphertext = VALUES(ciphertext), iv = VALUES(iv), tag = VALUES(tag), key_version = VALUES(key_version), expires_at = VALUES(expires_at), created_at = VALUES(created_at)`;
   }
-  return `${insert} ON CONFLICT (pk, sk) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, tag = excluded.tag, key_version = excluded.key_version, expires_at = excluded.expires_at, created_at = excluded.created_at`;
+  return `${insert} ON CONFLICT (uid) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, tag = excluded.tag, key_version = excluded.key_version, expires_at = excluded.expires_at, created_at = excluded.created_at`;
 }
 
-/** The SQL twin of the DynamoDB table (SQLite locally, the same table on MariaDB). Same item shape, same semantics. */
+/**
+ * The SQL twin of `discharge-summaries` (SQLite locally, the same table on MariaDB when DOC_STORE=local
+ * there). One row per item with the same `uid` the real table uses; the purge job plays the part of TTL.
+ */
 export class LocalDocumentStore implements DocumentStore {
   readonly name = "local" as const;
+  readonly describe: string;
   private readonly upsert: string;
 
   constructor(private readonly db: Db) {
     this.upsert = upsertDocumentSql(db.dialect);
+    this.describe = `${db.dialect}:documents (twin of discharge-summaries, key=uid)`;
   }
 
   async put(item: DocItem): Promise<void> {
-    await this.db.run(this.upsert, [item.pk, item.sk, item.ciphertext, item.iv, item.tag, item.keyVersion, item.expiresAt, item.createdAt]);
+    await this.db.run(this.upsert, [uidFor(item.pk, item.sk), item.pk, item.sk, item.ciphertext, item.iv, item.tag, item.keyVersion, item.expiresAt, item.createdAt]);
   }
 
   async get(pk: string, sk: string): Promise<DocItem | null> {
-    const row = await this.db.get<Row>("SELECT * FROM documents WHERE pk = ? AND sk = ?", [pk, sk]);
+    const row = await this.db.get<Row>("SELECT * FROM documents WHERE uid = ?", [uidFor(pk, sk)]);
     return row ? toItem(row) : null;
   }
 
@@ -69,6 +75,6 @@ export class LocalDocumentStore implements DocumentStore {
   }
 
   async delete(pk: string, sk: string): Promise<void> {
-    await this.db.run("DELETE FROM documents WHERE pk = ? AND sk = ?", [pk, sk]);
+    await this.db.run("DELETE FROM documents WHERE uid = ?", [uidFor(pk, sk)]);
   }
 }

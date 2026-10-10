@@ -19,7 +19,7 @@
     "check-sql": "tsx scripts/check-sql.ts",
     "fetch-rds-bundle": "sh scripts/fetch-rds-bundle.sh",
     "show-audit": "tsx scripts/show-audit.ts",
-    "create-table": "tsx scripts/create-dynamo-table.ts",
+    "setup-dynamo": "tsx scripts/setup-dynamo.ts",
     "email-worker": "tsx scripts/email-worker.ts",
     "live-ingest": "tsx scripts/live-ingest.ts",
     "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts"
