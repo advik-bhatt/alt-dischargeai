@@ -1,0 +1,16 @@
+# DynamoDB Local for DOC_STORE=dynamo demos without an AWS account.
+#   docker compose up -d
+#   DYNAMO_ENDPOINT=http://localhost:8000 npm run create-table
+#   DOC_STORE=dynamo DYNAMO_ENDPOINT=http://localhost:8000 npm run dev
+# Shape copied from the AWS DynamoDB Local docs page (see docs/research.md). Any non-empty fake
+# credentials work against it; the backend sets them automatically when DYNAMO_ENDPOINT is set.
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dischargeai-dynamodb-local
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
+    ports:
+      - "8000:8000"
+    working_dir: /home/dynamodblocal
+    volumes:
+      - ./docker/dynamodb:/home/dynamodblocal/data
