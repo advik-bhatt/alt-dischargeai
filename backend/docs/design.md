@@ -77,7 +77,7 @@ test/                 15 vitest files
 
 SQL, one portable schema (`src/db/migrations/0001_init.sql`), `VARCHAR` for every keyed column so MariaDB can index it, ISO timestamps from the app clock:
 
-- The team's `patientinfo` (read only, never seeded by the server): columns discovered at startup and mapped to `GET /patients`'s `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName` by name, ignoring case and underscores (`src/db/repos/patients.ts`). `0002_patientinfo.*.sql` creates it with those columns only where it is missing.
+- The team's `patientinfo` (read only, never seeded by the server): columns discovered at startup and mapped to `GET /patients`'s `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName` by name, ignoring case and underscores, with the id accepted as `ID`, `patientID` or `uid` (`src/db/repos/patients.ts`). The team's RDS table has no `caregiverName` column; that key is then `null`. `0002_patientinfo.*.sql` creates it with those columns only where it is missing.
 - `activeLinks(id AUTOINCREMENT, sumId UNIQUE, patientID FK, createdAt, expiresAt = createdAt + 30 days, status pending|ready|needs_review|failed|expired|purged, language, languages JSON, pdfKey, audioKey, lastViewedAt, emailedAt)`: the tasks doc's table, the `sumId` stored as-is.
 - `jobs(id, sum_id FK, stage, input_kind, error, safety JSON, meta JSON, created_at, updated_at)`.
 - `audit_log(id AUTOINCREMENT, event, sum_id, actor provider|patient|system, at, details JSON)`; deletion receipts are rows with `event = deletion.receipt`.

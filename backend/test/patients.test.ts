@@ -129,6 +129,35 @@ describe("The team's patients table (patientinfo): read as it is, never seeded b
     }
   });
 
+  it("reads the real team table: id column `uid`, camelCase names, and no caregiverName column at all", async () => {
+    // The columns reported by the team's RDS on 2026-10-10, in that order.
+    const file = teamDb(
+      "team-real",
+      "CREATE TABLE patientinfo (uid VARCHAR(36) PRIMARY KEY, firstName VARCHAR(100), lastName VARCHAR(100), DOB DATE, zipCode VARCHAR(10), phoneNumber VARCHAR(30), email VARCHAR(200), caregiverEmail VARCHAR(200))",
+      [
+        "INSERT INTO patientinfo VALUES ('3f9c1a52-0000-4000-8000-000000000001', 'Ana', 'Lopez', '1950-01-02', '08901', '555-0001', 'ana@example.test', 'cg@example.test')",
+        "INSERT INTO patientinfo VALUES ('3f9c1a52-0000-4000-8000-000000000002', 'Ben', 'Adams', '1960-03-04', '07102', '555-0002', 'ben@example.test', NULL)",
+      ],
+    );
+    const app = await createTestApp({ seed: false, env: { DATABASE_FILE: file } });
+    try {
+      const res = await app.provider(request(app.app).get("/patients"));
+      expect(res.status).toBe(200);
+      for (const p of res.body.patients) expect(Object.keys(p)).toEqual([...CONTRACT_PATIENT_KEYS]);
+      expect(res.body.patients).toEqual([
+        { ID: "3f9c1a52-0000-4000-8000-000000000002", DOB: "1960-03-04", FirstName: "Ben", LastName: "Adams", ZipCode: "07102", email: "ben@example.test", phoneNumber: "555-0002", caregiverEmail: null, caregiverName: null },
+        { ID: "3f9c1a52-0000-4000-8000-000000000001", DOB: "1950-01-02", FirstName: "Ana", LastName: "Lopez", ZipCode: "08901", email: "ana@example.test", phoneNumber: "555-0001", caregiverEmail: "cg@example.test", caregiverName: null },
+      ]);
+      expect((await app.provider(request(app.app).get("/patients/3f9c1a52-0000-4000-8000-000000000001"))).body).toMatchObject({ ID: "3f9c1a52-0000-4000-8000-000000000001", FirstName: "Ana" });
+      const ingest = await app.provider(request(app.app).post("/ingest")).send({ data: exampleText("example-1-chf"), type: "text", patientID: "3f9c1a52-0000-4000-8000-000000000001" });
+      expect(ingest.status).toBe(202);
+      await app.ctx.queue.onIdle();
+      expect(app.mailer.sent.map((m) => m.to).sort()).toEqual(["ana@example.test", "cg@example.test"]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("PATIENTS_TABLE reads another table; a table without an id column stops startup with its real columns", async () => {
     const other = teamDb("other", "CREATE TABLE people (ID TEXT PRIMARY KEY, FirstName TEXT, LastName TEXT, DOB TEXT, ZipCode TEXT, email TEXT, phoneNumber TEXT, caregiverEmail TEXT, caregiverName TEXT)", [
       "INSERT INTO people VALUES ('p1', 'Cy', 'Diaz', '1970-05-06', '08540', 'cy@example.test', '555-0003', NULL, NULL)",
@@ -148,6 +177,10 @@ describe("The team's patients table (patientinfo): read as it is, never seeded b
       id: "ID", dateOfBirth: "DOB", firstName: "FirstName", lastName: "LastName", zipCode: "ZipCode", email: "email", phone: "phoneNumber", caregiverEmail: "caregiverEmail", caregiverName: "caregiverName",
     });
     expect(mapColumns(["patientID", "date_of_birth", "first_name", "last_name", "zip_code", "email_address", "phone", "caregiver_email", "caregiver_name", "preferred_language"])).toMatchObject({ id: "patientID", dateOfBirth: "date_of_birth", phone: "phone", preferredLanguage: "preferred_language" });
+    expect(mapColumns(["uid", "firstName", "lastName", "DOB", "zipCode", "phoneNumber", "email", "caregiverEmail"])).toEqual({
+      id: "uid", dateOfBirth: "DOB", firstName: "firstName", lastName: "lastName", zipCode: "zipCode", email: "email", phone: "phoneNumber", caregiverEmail: "caregiverEmail",
+    });
+    expect(mapColumns(["uid", "ID"]).id).toBe("ID");
     const mysqlRepo = new PatientsRepo({ dialect: "mysql", describe: "mysql://admin@rds/dischargeai" } as unknown as Db);
     await expect(seedPatients(mysqlRepo, { append: async () => undefined } as unknown as AuditRepo, () => "now")).rejects.toThrow(/Refusing to seed synthetic patients into MySQL/);
     await expect(mysqlRepo.insertLocal({ id: "x", firstName: "a", lastName: "b", dateOfBirth: "2000-01-01", zipCode: "1", email: "e@example.test", phone: "1" })).rejects.toThrow(/Refusing to write synthetic patients/);

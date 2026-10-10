@@ -63,7 +63,7 @@ type Field = "id" | "dateOfBirth" | "firstName" | "lastName" | "zipCode" | "emai
 
 /** Accepted column names per field, compared after lower-casing and dropping everything but letters and digits. */
 const ALIASES: Record<Field, string[]> = {
-  id: ["id", "patientid"],
+  id: ["id", "patientid", "uid", "patientuid"],
   dateOfBirth: ["dob", "dateofbirth", "birthdate", "birthday"],
   firstName: ["firstname", "fname", "givenname"],
   lastName: ["lastname", "lname", "surname", "familyname"],
@@ -84,8 +84,14 @@ export type ColumnMap = Partial<Record<Field, string>>;
 export function mapColumns(columns: string[]): ColumnMap {
   const map: ColumnMap = {};
   for (const field of Object.keys(ALIASES) as Field[]) {
-    const hit = columns.find((c) => ALIASES[field].includes(normalize(c)));
-    if (hit) map[field] = hit;
+    // Alias order is priority: a table with both `ID` and `uid` uses ID.
+    for (const alias of ALIASES[field]) {
+      const hit = columns.find((c) => normalize(c) === alias);
+      if (hit) {
+        map[field] = hit;
+        break;
+      }
+    }
   }
   return map;
 }
@@ -140,7 +146,7 @@ export class PatientsRepo {
     }
     const map = mapColumns(this.columns);
     if (!map.id) {
-      throw new Error(`Patients table "${this.table}" has no id column the backend recognises (expected ID or patientID). Its columns: ${this.columns.join(", ")}`);
+      throw new Error(`Patients table "${this.table}" has no id column the backend recognises (expected ID, patientID or uid). Its columns: ${this.columns.join(", ")}`);
     }
     this.map = map;
     const unmapped = CONTRACT_PATIENT_KEYS.filter((k) => !map[contractField(k)]);
