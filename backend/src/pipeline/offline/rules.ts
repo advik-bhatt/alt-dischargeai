@@ -5,7 +5,7 @@ import type { AiOutput, FollowUp, Medication, Step, Warning } from "../../contra
  * it reads the headings a discharge summary normally has (new / continue / stopped medications,
  * instructions, return precautions) and fills the contract from them. Every drug name, dose and
  * frequency is copied from the source line, so the safety checks pass by construction.
- * Reference for the approach: healthcare-discharge-agent and parsigs (see docs/research.md).
+ * The approach follows the open-source healthcare-discharge-agent and parsigs projects.
  */
 
 type Section = "none" | "diagnoses" | "course" | "meds_new" | "meds_continue" | "meds_stop" | "instructions" | "precautions" | "nursing";

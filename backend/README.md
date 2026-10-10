@@ -55,8 +55,6 @@ curl -s -w ' HTTP %{http_code}\n' http://localhost:4000/patients
 curl -s -H "x-provider-key: dev-provider-key" "http://localhost:4000/patients?q=reyes"
 ```
 
-Checked on 2026-10-10 against `npm run dev` on a fresh local SQLite file: an empty list before `npm run seed`, the six synthetic patients with the nine keys after it (`pt-0004` has no caregiver, so both caregiver keys are `null`), 401 without the key, one match for `reyes`. Against the team's RDS the list is whatever `patientinfo` holds; that path is tested on SQLite tables shaped like it (other column names, INT ids) because port 3306 is not reachable from the build container.
-
 ### Task 2: `pdfToText`
 
 The tasks doc defines it as a function the ingester calls, not a route, so it is tested by ingesting a PDF and reading the job. The `data` below is a one-page PDF (885 bytes, `fixtures/discharge-summaries/curl-sample.pdf`) as base64:
@@ -73,8 +71,6 @@ curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/jobs/<jobId>
 # Paste the sumId: the summary built from the extracted text (Furosemide 40 mg, once a day by mouth, new)
 curl -s "http://localhost:4000/llm-sumary?sum-id=<sumId>"
 ```
-
-Checked on 2026-10-10 against `npm run dev` on this commit: 202, then `done` with `verified: true`, one page, 247 characters, and the PDF saved as `data/pdf/<sumId>.pdf` (the local twin of `emrpdf-rh`). `npm test` checks the function returns those eight lines exactly and that this README carries that exact PDF.
 
 With the default `LLM_PROVIDER=offline`, the simplifier is rule-based: it reads summaries laid out with headings ("New medications:", "Discharge instructions:", "Return precautions:") and bulleted lines, like the samples here and the five examples in `fixtures/`. Free prose it cannot place is caught by the safety check and held for review (`423`), never shown with a medication missing. Start the server with `LLM_PROVIDER=bedrock` and AWS credentials to have Claude handle any layout.
 
@@ -103,10 +99,6 @@ curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/patients/pt-
 
 The server terminal prints two emails with the link: `To: harold.jennings@example.test` (the patient) and `To: june.jennings@example.test` (the caregiver). The job's progress is at `GET /jobs/<jobId>` (provider key), as in task 2.
 
-Checked on 2026-10-10 against `npm run dev` on this commit: every response as described, the job `done` with `verified: true` and languages `["en", "es"]`, both emails printed.
-
-Checked live the same day from the build container (team secret loaded, `LLM_PROVIDER=bedrock`, `DATABASE_URL=sqlite:data/live.db` because RDS port 3306 is not reachable from there): the text above for `pt-0001` and the task 2 PDF for `pt-0002` both went `done` and verified on `us.anthropic.claude-sonnet-4-6` (about 5.5 s of model time each, both jobs finished within 14 s). Read back with boto3, each `discharge-summaries` item had `uid` equal to `sum-id`, `patientID`, `raw-text`, `llm-summary` (a map), `translations` (a map holding `es`), `language`, `status: ready`, `createdAt` and `expiresAt` (a number, 30 days out); TTL is enabled on `expiresAt`. The PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, SSE AES256. `emrpdf-rh` was created that day by `npm run setup-s3 -- --bucket emrpdf-rh` (public access blocked, AES256 by default, objects expire after 30 days); a second run changed nothing.
-
 ### Task 4: `GET /llm-sumary?sum-id=`
 
 Use the `sumId` from a task 3 response (patient routes need no key):
@@ -132,8 +124,6 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=<sumI
 
 While the LLM is still working the route answers `425 processing`; with the offline provider that window is a few milliseconds, so `npm test` holds the model on a gate to check it.
 
-Checked on 2026-10-10 against `npm run dev` on this commit: 200 with the summary, identical bodies on both spellings, 404, 400, and 410 after the restart 31 days ahead. Checked live the same day: `GET /llm-sumary` on the task 3 live server returned the summary Bedrock wrote, read from the `discharge-summaries` item.
-
 ### Task 5: `GET /translation?lang=&sum_id=`
 
 Use a fresh `sumId` from task 3 (ingested with `"language":"es"`):
@@ -155,8 +145,6 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?lang=es&sum
 ```
 
 With the default offline provider the cache behaves exactly as above, but the words are a stand-in: Spanish comes from a small phrase dictionary (so some English remains), and other languages come back in English marked `[zh]` and so on. Example 1 in `fixtures/` has full Spanish, Mandarin and Arabic fixtures. Real translations need `LLM_PROVIDER=bedrock`.
-
-Checked on 2026-10-10 against `npm run dev` on this commit: Spanish `fromCache: true`, Mandarin `false` then `true`, `availableLanguages` `["en", "es", "zh"]`, 400, 400, 404. Checked live the same day on `us.anthropic.claude-sonnet-4-6` against the task 3 item: the first Mandarin request translated in 3.6 s (`fromCache: false`, "开始每天口服一次 Furosemide 40 mg。", name and dose verbatim), the second came from the item in 73 ms (`fromCache: true`), and boto3 showed `translations` on the `discharge-summaries` item holding `es` and `zh`. The two live test items and the test PDF were then deleted from `discharge-summaries` and `emrpdf-rh` by key and confirmed gone.
 
 ## The demo (what the judge sees)
 
@@ -242,16 +230,21 @@ The `sumId` is stored as-is in `activeLinks`, as the DynamoDB `uid` and in the o
 
 IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:PutItem, GetItem, UpdateItem, DeleteItem, Scan` on the table plus `DescribeTable, DescribeTimeToLive, UpdateTimeToLive, CreateTable` for the setup script; `bedrock:InvokeModel` on `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0`; `s3:PutObject, GetObject, DeleteObject, ListBucket` on `emrpdf-rh` and `emraudio-rh` (plus `CreateBucket, PutPublicAccessBlock, PutEncryptionConfiguration, GetLifecycleConfiguration, PutLifecycleConfiguration` for the setup script); `ses:SendEmail` when `EMAIL_TRANSPORT=ses`; `sqs:SendMessage` (and `ReceiveMessage, DeleteMessage` for the worker) when `EMAIL_QUEUE=sqs`; `transcribe:StartMedicalTranscriptionJob, GetMedicalTranscriptionJob` when `SPEECH_PROVIDER=transcribe`; the Streams handler needs `dynamodb:DescribeStream, GetRecords, GetShardIterator, ListStreams`.
 
-### Verified live from the build container (2026-10-10, Workshop Studio role)
+### Verified on 2026-10-10 (build container, Workshop Studio role)
+
+Every curl in "Test the five tasks" was run as written against `npm run dev` on a fresh SQLite file; the offline demo exits 0. Live runs used the team secret, `LLM_PROVIDER=bedrock` and `DATABASE_URL=sqlite:data/live.db` (RDS port 3306 is not reachable from there).
 
 | Check | Result |
 | --- | --- |
-| Secrets Manager `GetSecretValue` | all seven keys read and applied (406 ms); recorded in `fixtures/live-samples/infra.2026-10-10.json` |
-| DynamoDB `discharge-summaries` | ACTIVE, hash key `uid`, TTL ENABLED on `expiresAt`; probe item put 84 ms, get 65 ms, delete 71 ms, gone after delete; `npm run setup-dynamo` reports no change needed |
-| S3 `emraudio-rh` | HeadBucket ok; probe object put with SSE AES256 107 ms, get 89 ms, delete 81 ms; lifecycle rule `autodelete` 30 days present |
+| Secrets Manager `GetSecretValue` | all seven keys read and applied (406 ms); `fixtures/live-samples/infra.2026-10-10.json` |
+| DynamoDB `discharge-summaries` | ACTIVE, hash key `uid`, TTL on `expiresAt`; probe put 84 ms, get 65 ms, delete 71 ms |
+| S3 `emraudio-rh` | probe object put with SSE AES256, read, delete; lifecycle rule `autodelete` (30 days) present |
+| S3 `emrpdf-rh` | did not exist; created by `npm run setup-s3 -- --bucket emrpdf-rh` (public access blocked, AES256, 30-day expiry); a second run changed nothing |
 | Bedrock Converse | `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0` both answer the tool-based JSON call |
-
-These rows were recorded before the single-item layout and `emrpdf-rh`; the live runs on the new layout are recorded with each task under "Test the five tasks with curl".
+| `POST /ingest` live (text for `pt-0001`, PDF for `pt-0002`) | both `done` and verified on Sonnet 4.6, about 5.5 s of model time each; each `discharge-summaries` item held `uid` = `sum-id`, `patientID`, `raw-text`, `llm-summary`, `translations` (with `es`), `language`, `status: ready`, `createdAt`, `expiresAt` (30 days out); the PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, AES256 |
+| `GET /llm-sumary`, `GET /translation` live | served from the DynamoDB item; Mandarin 3.6 s on the first request, 73 ms from the item on the second, name and dose verbatim, `translations` then held `es` and `zh` |
+| Cleanup | the two live items and the test PDF were deleted by key and confirmed gone |
+| MariaDB 10.11 (local) | migrations, the pre-contract upgrade, `patientinfo` with an INT id and a DATE column, ingest and `activeLinks` rows: `MYSQL_TEST_URL='mysql://user:pw@127.0.0.1:3306/x?insecure=1' npm test` |
 
 ### Needs a key or not exercised live from the build container
 
@@ -322,7 +315,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 115 passing and 1 skipped (the MariaDB upgrade test, which runs when `MYSQL_TEST_URL` is set; 116 of 116 with it), 19 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, read from a `patientinfo` that the server never seeds, with other column spellings and INT ids mapped, `PATIENTS_TABLE`, startup stopping on a table without an id column, seeding refused on MySQL, an upgrade of a database made by the earlier schema and one made by the pre-contract backend (tables set aside, rows kept, the team's rows served, ingest working, second start a no-op; on SQLite always and on MariaDB with `MYSQL_TEST_URL`), the RDS bundle required and resolved from `backend/`, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation on `GET /translation` (miss, then hit by code and by name, the agent given exactly the `llm-summary`, the result saved under `translations[lang]`) and on the earlier `/translate` with Spanish, Mandarin and Arabic, a refused translation that is not cached, `GET /llm-sumary` found, aliases, 400, 404, 425 and 410, every mounted route documented in OpenAPI, the DEMO_NOW purge refusing AWS stores, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test` on Node 24: 116 passing and 1 skipped (117 of 117 with `MYSQL_TEST_URL` set, which turns on the MariaDB upgrade test), 19 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), no keys. The files cover, in order: the nine `GET /patients` keys read from a `patientinfo` the server never seeds; JSON ingest of text and PDF, the 400 on a bad `type`, the `activeLinks` row, the DynamoDB item and the two emails; `GET /llm-sumary` (200, aliases, 400, 404, 425, 410); `GET /translation` (miss, hit, refused translation); `pdfToText`; upgrades from older databases; the RDS bundle; the DEMO_NOW purge guard; and the earlier routes, safety checks, stores, handlers and OpenAPI-versus-routes check.
 
 ## Limitations
 

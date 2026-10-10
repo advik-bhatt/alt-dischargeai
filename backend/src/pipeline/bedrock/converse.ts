@@ -13,7 +13,7 @@ import type { LlmUsage } from "../types.js";
 /**
  * Amazon Bedrock Converse with tool-based structured JSON. Verified live in this account on
  * 2026-10-10 with us.anthropic.claude-sonnet-4-6 (forced toolChoice) and
- * us.anthropic.claude-haiku-4-5-20251001-v1:0 (auto toolChoice + system line); see docs/research.md 4.1.
+ * us.anthropic.claude-haiku-4-5-20251001-v1:0 (auto toolChoice + system line).
  *
  * Flow: one tool whose inputSchema.json is our zod schema -> the model must call it -> read
  * toolUse.input -> validate with zod -> on failure send the issues back as a toolResult error and
