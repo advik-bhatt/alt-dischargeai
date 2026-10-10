@@ -55,6 +55,9 @@ export const ConfigSchema = z.object({
   TRANSCRIBE_BUCKET: optionalString,
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
 
+  SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
+  AUDIO_BUCKET: optionalString,
+
   EMAIL_TRANSPORT: z.enum(["console", "smtp", "ses"]).default("console"),
   EMAIL_FROM: z.string().default("DischargeAI <noreply@example.test>"),
   SMTP_URL: optionalString,

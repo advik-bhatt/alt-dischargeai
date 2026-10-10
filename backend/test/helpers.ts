@@ -13,6 +13,10 @@ export function exampleText(name = "example-1-chf"): string {
   return readFileSync(join(FIXTURES, "discharge-summaries", `${name}.txt`), "utf8");
 }
 
+export function transcriptFixture(name = "dictation-1"): string {
+  return (JSON.parse(readFileSync(join(FIXTURES, "offline", "transcripts", `${name}.json`), "utf8")) as { text: string }).text;
+}
+
 export function examplePdf(name = "example-1-chf"): Buffer {
   return readFileSync(join(FIXTURES, "discharge-summaries", `${name}.pdf`));
 }
