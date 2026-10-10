@@ -13,10 +13,10 @@ export interface DynamoSinkOptions {
 export const RECEIPT_PREFIX = "receipt#";
 
 /**
- * Receipts as items of the same `discharge-summaries` table, keyed `receipt#<linkIdHash>#<receiptId>`
- * with NO expiresAt attribute, so TTL never removes them: the proof outlives the data without a
- * second table in the team account. The stream handler ignores receipt keys, and the document
- * store's scans filter on `pk` / `expiresAt`, which receipts do not carry.
+ * Receipts as items of the same `discharge-summaries` table, keyed `receipt#<sumId>#<receiptId>`
+ * with NO expiresAt and NO sum-id attribute, so TTL never removes them and the summary store's
+ * backstop sweep (which filters on sum-id) never sees them: the proof outlives the data without a
+ * second table in the team account. The stream handler ignores receipt keys.
  * IAM: dynamodb:PutItem, Scan.
  */
 export class DynamoAuditSink implements AuditSink {
@@ -30,7 +30,7 @@ export class DynamoAuditSink implements AuditSink {
   }
 
   async append(receipt: DeletionReceipt): Promise<void> {
-    await this.doc.send(new PutCommand({ TableName: this.opts.tableName, Item: { [this.key]: `${RECEIPT_PREFIX}${receipt.linkIdHash}#${receipt.receiptId}`, kind: "receipt", ...receipt } }));
+    await this.doc.send(new PutCommand({ TableName: this.opts.tableName, Item: { [this.key]: `${RECEIPT_PREFIX}${receipt.sumId}#${receipt.receiptId}`, kind: "receipt", ...receipt } }));
   }
 
   private async scan(prefix: string, limit: number): Promise<DeletionReceipt[]> {
@@ -54,7 +54,7 @@ export class DynamoAuditSink implements AuditSink {
     return this.scan(RECEIPT_PREFIX, limit);
   }
 
-  async findByLinkIdHash(linkIdHash: string): Promise<DeletionReceipt[]> {
-    return this.scan(`${RECEIPT_PREFIX}${linkIdHash}#`, Number.MAX_SAFE_INTEGER);
+  async findBySumId(sumId: string): Promise<DeletionReceipt[]> {
+    return this.scan(`${RECEIPT_PREFIX}${sumId}#`, Number.MAX_SAFE_INTEGER);
   }
 }

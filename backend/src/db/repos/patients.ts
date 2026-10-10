@@ -9,9 +9,9 @@ export interface PatientRow {
   zip_code: string;
   email: string;
   phone: string;
+  caregiver_email: string | null;
+  caregiver_name: string | null;
   preferred_language: string | null;
-  active_link_id: string | null;
-  active_link_expires_at: string | null;
   created_at: string;
 }
 
@@ -23,9 +23,9 @@ export interface Patient {
   zipCode: string;
   email: string;
   phone: string;
+  caregiverEmail: string | null;
+  caregiverName: string | null;
   preferredLanguage: string | null;
-  activeLinkId: string | null;
-  activeLinkExpiresAt: string | null;
   createdAt: string;
 }
 
@@ -37,8 +37,25 @@ export interface NewPatient {
   zipCode: string;
   email: string;
   phone: string;
+  caregiverEmail?: string | null;
+  caregiverName?: string | null;
   preferredLanguage?: string | null;
 }
+
+/** The team contract's GET /patients item: exactly these nine keys, these spellings. */
+export interface ContractPatient {
+  ID: string;
+  DOB: string;
+  FirstName: string;
+  LastName: string;
+  ZipCode: string;
+  email: string;
+  phoneNumber: string;
+  caregiverEmail: string | null;
+  caregiverName: string | null;
+}
+
+export const CONTRACT_PATIENT_KEYS = ["ID", "DOB", "FirstName", "LastName", "ZipCode", "email", "phoneNumber", "caregiverEmail", "caregiverName"] as const;
 
 export function toPatient(r: PatientRow): Patient {
   return {
@@ -49,10 +66,24 @@ export function toPatient(r: PatientRow): Patient {
     zipCode: r.zip_code,
     email: r.email,
     phone: r.phone,
+    caregiverEmail: r.caregiver_email,
+    caregiverName: r.caregiver_name,
     preferredLanguage: r.preferred_language,
-    activeLinkId: r.active_link_id,
-    activeLinkExpiresAt: r.active_link_expires_at,
     createdAt: r.created_at,
+  };
+}
+
+export function toContractPatient(p: Patient): ContractPatient {
+  return {
+    ID: p.id,
+    DOB: p.dateOfBirth,
+    FirstName: p.firstName,
+    LastName: p.lastName,
+    ZipCode: p.zipCode,
+    email: p.email,
+    phoneNumber: p.phone,
+    caregiverEmail: p.caregiverEmail,
+    caregiverName: p.caregiverName,
   };
 }
 
@@ -65,7 +96,7 @@ export class PatientsRepo {
       const rows = await this.db.all<PatientRow>(
         `SELECT * FROM patients
          WHERE LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(email) LIKE ? OR phone LIKE ?
-            OR LOWER(first_name || ' ' || last_name) LIKE ?
+            OR LOWER(CONCAT(first_name, ' ', last_name)) LIKE ?
          ORDER BY last_name, first_name`,
         [like, like, like, like, like],
       );
@@ -88,26 +119,10 @@ export class PatientsRepo {
   async create(p: NewPatient, createdAt: string): Promise<Patient> {
     const id = p.id ?? randomUUID();
     await this.db.run(
-      `INSERT INTO patients (id, first_name, last_name, date_of_birth, zip_code, email, phone, preferred_language, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, p.firstName, p.lastName, p.dateOfBirth, p.zipCode, p.email, p.phone, p.preferredLanguage ?? null, createdAt],
+      `INSERT INTO patients (id, first_name, last_name, date_of_birth, zip_code, email, phone, caregiver_email, caregiver_name, preferred_language, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, p.firstName, p.lastName, p.dateOfBirth, p.zipCode, p.email, p.phone, p.caregiverEmail ?? null, p.caregiverName ?? null, p.preferredLanguage ?? null, createdAt],
     );
     return (await this.getById(id))!;
-  }
-
-  async setActiveLink(id: string, linkId: string, expiresAt: string): Promise<void> {
-    await this.db.run("UPDATE patients SET active_link_id = ?, active_link_expires_at = ? WHERE id = ?", [
-      linkId,
-      expiresAt,
-      id,
-    ]);
-  }
-
-  /** Clears the active link only if it still points at the given link id (an older link must not clobber a newer one). */
-  async clearActiveLink(id: string, linkId: string): Promise<void> {
-    await this.db.run(
-      "UPDATE patients SET active_link_id = NULL, active_link_expires_at = NULL WHERE id = ? AND active_link_id = ?",
-      [id, linkId],
-    );
   }
 }

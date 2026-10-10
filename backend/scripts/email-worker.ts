@@ -7,6 +7,7 @@
  */
 import { DeleteMessageCommand, ReceiveMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { loadConfig } from "../src/config.js";
+import { logRef } from "../src/crypto/sumId.js";
 import { loadDotEnv } from "../src/dotenv.js";
 import { createMailer, type Mailer } from "../src/email/mailer.js";
 import type { QueuedEmail } from "../src/email/queue.js";
@@ -26,7 +27,7 @@ async function sendOne(body: string): Promise<void> {
   const msg = JSON.parse(body) as QueuedEmail;
   const m = await getMailer();
   const sent = await m.send({ to: msg.to, subject: msg.subject, text: msg.text });
-  log.info({ kind: msg.kind, transport: sent.transport, messageId: sent.messageId, link: msg.linkIdHash.slice(0, 8) }, "queued email sent");
+  log.info({ kind: msg.kind, transport: sent.transport, messageId: sent.messageId, link: logRef(msg.sumId) }, "queued email sent");
 }
 
 /** Lambda entry point: an SQS event source mapping delivers { Records: [{ body }] }. */

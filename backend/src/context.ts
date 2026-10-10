@@ -1,16 +1,15 @@
 import { createAuditSink, type AuditSink } from "./audit/receipts.js";
 import { Clock } from "./clock.js";
 import { LINK_TTL_DAYS, loadConfig, type Config } from "./config.js";
-import { createAudioStore, resolveAudioStore, type AudioStatus, type AudioStore } from "./data/audio.js";
+import { createObjectStores, type ObjectStore, type ObjectStoreStatus } from "./data/objects.js";
 import { migrate } from "./db/migrate.js";
 import { openDb, type Db } from "./db/index.js";
+import { ActiveLinksRepo } from "./db/repos/activeLinks.js";
 import { AuditRepo } from "./db/repos/audit.js";
 import { JobsRepo } from "./db/repos/jobs.js";
-import { LinksRepo } from "./db/repos/links.js";
 import { PatientsRepo } from "./db/repos/patients.js";
 import { seedPatients } from "./db/seed.js";
-import { createDocumentStore, resolveDocStore, type DocumentStore } from "./docstore/index.js";
-import { SecureDocs } from "./docstore/secure.js";
+import { createSummaryStore, resolveDocStore, type SummaryStore } from "./docstore/index.js";
 import { createMailer, type Mailer } from "./email/mailer.js";
 import { createSqsEmailQueue, type EmailQueue } from "./email/queue.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -33,13 +32,17 @@ export interface AppContext {
   clock: Clock;
   db: Db;
   patients: PatientsRepo;
-  links: LinksRepo;
+  activeLinks: ActiveLinksRepo;
   jobs: JobsRepo;
   audit: AuditRepo;
-  docStore: DocumentStore;
-  secureDocs: SecureDocs;
-  audio: AudioStore;
-  audioStatus: AudioStatus;
+  /** The team table (one item per summary) or its SQL twin. */
+  summaries: SummaryStore;
+  /** The PDF bucket (emrpdf-rh) or its local twin. */
+  pdf: ObjectStore;
+  pdfStatus: ObjectStoreStatus;
+  /** The audio bucket (emraudio-rh) or its local twin. */
+  audio: ObjectStore;
+  audioStatus: ObjectStoreStatus;
   /** Deletion receipts sink (sql by default). */
   receipts: AuditSink;
   simplifier: Simplifier;
@@ -49,7 +52,7 @@ export interface AppContext {
   emailQueue?: EmailQueue;
   queue: JobQueue;
   linkTtlDays: number;
-  patientUrl(linkId: string): string;
+  patientUrl(sumId: string): string;
   enqueueIngest(jobId: string, pending?: PendingInput): void;
   purge(): Promise<PurgeReport>;
   startPurgeTimer(): void;
@@ -82,14 +85,14 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
 
   const patients = new PatientsRepo(db);
-  const links = new LinksRepo(db);
+  const activeLinks = new ActiveLinksRepo(db);
   const jobs = new JobsRepo(db);
   const audit = new AuditRepo(db);
   const secrets = opts.secrets ?? NO_SECRETS;
-  const docStore = createDocumentStore(config, db, resolveDocStore(config, secrets.source === "secrets-manager"));
-  log.info({ docStore: docStore.describe }, "document store");
-  const secureDocs = new SecureDocs(docStore);
-  const { store: audio, status: audioStatus } = await createAudioStore(config, resolveAudioStore(config, secrets.source === "secrets-manager"), log);
+  const secretResolved = secrets.source === "secrets-manager";
+  const summaries = createSummaryStore(config, db, resolveDocStore(config, secretResolved));
+  log.info({ docStore: summaries.describe }, "document store");
+  const stores = await createObjectStores(config, secretResolved, log);
   const receipts = await createAuditSink(config, { audit });
 
   if (opts.seed !== false) {
@@ -115,13 +118,14 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     clock,
     db,
     patients,
-    links,
+    activeLinks,
     jobs,
     audit,
-    docStore,
-    secureDocs,
-    audio,
-    audioStatus,
+    summaries,
+    pdf: stores.pdf.store,
+    pdfStatus: stores.pdf.status,
+    audio: stores.audio.store,
+    audioStatus: stores.audio.status,
     receipts,
     simplifier,
     translator,
@@ -130,7 +134,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     emailQueue,
     queue,
     linkTtlDays: LINK_TTL_DAYS,
-    patientUrl: (linkId) => `${config.PATIENT_APP_URL.replace(/\/$/, "")}/s/${linkId}`,
+    patientUrl: (sumId) => `${config.PATIENT_APP_URL.replace(/\/$/, "")}/s/${sumId}`,
     enqueueIngest: (jobId, pending) => queue.add(jobId, () => runIngestJob(ctx, jobId, pending)),
     purge: () => runPurge(ctx),
     startPurgeTimer: () => {

@@ -11,18 +11,26 @@ import { rateLimit } from "./middleware/rateLimit.js";
 import { healthRouter } from "./routes/health.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { jobsRouter } from "./routes/jobs.js";
+import { llmSummaryRouter } from "./routes/llmSummary.js";
 import { patientLinkRouter } from "./routes/patientLink.js";
 import { patientsRouter } from "./routes/patients.js";
 import { summaryRouter } from "./routes/summary.js";
 import { synthesizeRouter } from "./routes/synthesize.js";
 import { translateRouter } from "./routes/translate.js";
+import { translationRouter } from "./routes/translation.js";
 
 export const OPENAPI_FILE = join(import.meta.dirname, "..", "openapi.yaml");
+
+/** Paths the team contract names, plus the earlier routes kept as aliases. */
+export const PROVIDER_PATHS = ["/patients", "/ingest", "/jobs", "/synthesize"];
+export const PATIENT_PATHS = ["/llm-sumary", "/llm-summary", "/translation", "/summary", "/translate", "/p"];
 
 export function buildApp(ctx: AppContext): Express {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", true);
+  // POST /ingest carries a base64 PDF in JSON, so its body limit follows MAX_UPLOAD_BYTES (base64 grows bytes by 4/3).
+  app.use("/ingest", express.json({ limit: Math.ceil(ctx.config.MAX_UPLOAD_BYTES * 1.4) + 64 * 1024 }));
   app.use(express.json({ limit: "1mb" }));
   app.use(
     pinoHttp({
@@ -56,19 +64,21 @@ export function buildApp(ctx: AppContext): Express {
   }
 
   // Provider endpoints (light auth): x-provider-key on these prefixes only.
-  app.use(["/patients", "/ingest", "/jobs", "/synthesize"], providerAuth(ctx.config.PROVIDER_API_KEY));
+  app.use(PROVIDER_PATHS, providerAuth(ctx.config.PROVIDER_API_KEY));
   app.use(patientsRouter(ctx));
   app.use(ingestRouter(ctx));
   app.use(jobsRouter(ctx));
   app.use(synthesizeRouter(ctx));
 
-  // Patient endpoints: authenticated by the unguessable link id, lightly rate limited.
-  app.use(["/summary", "/translate", "/p"], rateLimit({ capacity: 120, refillPerSecond: 2 }));
+  // Patient endpoints: authenticated by the unguessable sum-id, lightly rate limited.
+  app.use(PATIENT_PATHS, rateLimit({ capacity: 120, refillPerSecond: 2 }));
+  app.use(llmSummaryRouter(ctx));
+  app.use(translationRouter(ctx));
   app.use(summaryRouter(ctx));
   app.use(translateRouter(ctx));
   app.use(patientLinkRouter(ctx));
 
-  app.use((_req, res) => res.status(404).json({ error: "not_found" }));
+  app.use((_req, res) => res.status(404).json({ statusCode: 404, error: "not_found", message: "No such route" }));
   app.use(errorHandler(ctx.log));
   return app;
 }

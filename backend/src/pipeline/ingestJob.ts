@@ -1,19 +1,18 @@
+import type { AiOutput } from "../contracts/aiOutput.js";
 import type { AppContext } from "../context.js";
-import { hashPrefix } from "../crypto/linkId.js";
+import { logRef } from "../crypto/sumId.js";
+import type { ActiveLink } from "../db/repos/activeLinks.js";
 import type { JobStage } from "../db/repos/jobs.js";
-import type { LinkRecord } from "../db/repos/links.js";
-import type { InputKind, RawDocument, StoredSummary, StoredTranslation } from "../docstore/documents.js";
-import { SK } from "../docstore/types.js";
-import { patientLinkEmail } from "../email/templates.js";
-import { extractPdfText } from "../extract/pdf.js";
+import type { InputKind, SummaryMeta } from "../docstore/types.js";
+import { caregiverLinkEmail, patientLinkEmail, type LinkEmail } from "../email/templates.js";
+import { pdfToText } from "../extract/pdfToText.js";
 import { normalizeText } from "../extract/text.js";
 import { resolveLanguages } from "./languages.js";
 import { runPipeline, type PipelineRun } from "./runPipeline.js";
 
-/** What POST /ingest hands to the pipeline. Kept in memory until the `raw` document exists. */
+/** What POST /ingest hands to the pipeline. Kept in memory until `raw-text` exists on the item. */
 export interface PendingInput {
-  /** Raw link id, needed only to build the patient URL for the email. */
-  linkId: string;
+  sumId: string;
   kind: InputKind;
   text?: string;
   file?: { buffer: Buffer; mimeType: string; fileName?: string };
@@ -24,64 +23,64 @@ export function epochSeconds(iso: string): number {
 }
 
 /**
- * The note's async steps after the 202, as a persisted stage machine:
- *   received -> extracting (pdf) | transcribing (audio) -> simplifying -> stored -> emailing -> done
- *                                                                            \-> needs_review (safety checks failed; no email yet)
+ * The team contract's async steps after the 202, as a persisted stage machine:
+ *   received -> extracting (pdf: pdfToText) | transcribing (audio) -> simplifying -> stored -> emailing -> done
+ *                                                                                    \-> needs_review (safety checks failed; no email yet)
  *   any stage --error--> failed
  * "simplifying" is lane 3 end to end: jargon to plain language -> safety checks -> translate into
- * the language the provider picked. The raw text, the LLM response and the translations land in
- * the document store (DynamoDB) encrypted, each with expiresAt = createdAt + 30 days.
+ * the language the provider picked. The raw text goes on the summary item as `raw-text`; when the
+ * LLM returns, `llm-summary` and `sum-id` are saved on the same item; then the link is emailed to
+ * the patient and to the caregiverEmail.
  */
 export async function runIngestJob(ctx: AppContext, jobId: string, pending?: PendingInput): Promise<void> {
-  const { jobs, links, patients, audit, secureDocs, clock, log } = ctx;
+  const { jobs, activeLinks, summaries, audit, clock, log } = ctx;
   const job = await jobs.get(jobId);
   if (!job) return;
-  const link = await links.getByHash(job.linkIdHash);
+  const link = await activeLinks.getBySumId(job.sumId);
   if (!link) {
     await jobs.setStage(jobId, "failed", clock.nowIso(), "link_missing");
     return;
   }
-  const lp = hashPrefix(job.linkIdHash);
+  const ref = logRef(job.sumId);
   const setStage = async (stage: JobStage, error?: string) => {
     await jobs.setStage(jobId, stage, clock.nowIso(), error);
-    await audit.append({ event: "job.stage", linkIdHash: job.linkIdHash, actor: "system", at: clock.nowIso(), details: { jobId, stage, ...(error ? { error } : {}) } });
-    log.info({ jobId, link: lp, stage }, "job stage");
+    await audit.append({ event: "job.stage", sumId: job.sumId, actor: "system", at: clock.nowIso(), details: { jobId, stage, ...(error ? { error } : {}) } });
+    log.info({ jobId, link: ref, stage }, "job stage");
   };
 
   try {
-    if (!link.encKey) throw new Error("link key is gone; cannot process");
-    const key = link.encKey;
-    const expiresAtEpoch = epochSeconds(link.expiresAt);
+    const item = await summaries.get(job.sumId);
+    if (!item) throw new Error("summary item missing from the document store");
 
-    // 1. The clinician text: from memory, or from the stored raw document (restart path).
-    let raw: RawDocument | null = await secureDocs.getJson<RawDocument>({ linkIdHash: job.linkIdHash, sk: SK.raw, key }).catch(() => null);
-    if (!raw) {
+    // 1. The clinician text: already on the item (pasted text, or a restart), or extracted now.
+    let text = item["raw-text"] ?? "";
+    if (!text) {
       if (!pending) throw new Error("restart_before_extraction: the input was lost when the process restarted");
-      let text: string;
-      let transcript: RawDocument["transcript"];
+      const meta: SummaryMeta = { ...(item.meta ?? {}) };
       if (pending.kind === "text") {
         text = normalizeText(pending.text ?? "");
       } else if (pending.kind === "pdf") {
         await setStage("extracting");
-        const r = await extractPdfText(pending.file!.buffer);
+        const r = await pdfToText(pending.file!.buffer);
+        meta.pdfPages = r.pages;
+        meta.pdfEngine = r.engine;
         await jobs.mergeMeta(jobId, { pdfPages: r.pages, pdfEngine: r.engine }, clock.nowIso());
         text = r.text;
       } else {
         await setStage("transcribing");
         // Transcribe Medical reads the clip from the bucket by key; with the local twin it gets the bytes.
         const r = await ctx.speechToText.transcribe({ audio: pending.file!.buffer, mimeType: pending.file!.mimeType, fileName: pending.file!.fileName, audioKey: ctx.audio.name === "s3" ? (link.audioKey ?? undefined) : undefined });
-        transcript = { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs };
+        meta.transcript = { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs };
         await jobs.mergeMeta(jobId, { speechProvider: r.provider, transcribeJobName: r.jobName, transcribeMs: r.latencyMs }, clock.nowIso());
         text = normalizeText(r.transcript);
       }
       if (!text) throw new Error("empty_input_after_extraction");
-      raw = { text, kind: pending.kind, linkId: pending.linkId, audioKey: link.audioKey ?? undefined, transcript };
-      await secureDocs.putJson({ linkIdHash: job.linkIdHash, sk: SK.raw, key, keyVersion: link.keyVersion, value: raw, expiresAtEpochSeconds: expiresAtEpoch, createdAt: clock.nowIso() });
+      await summaries.update(job.sumId, { "raw-text": text, meta });
     }
 
-    // 2. Lane 3: simplify -> safety checks -> translate into the picked language. Stored encrypted.
+    // 2. Lane 3: simplify -> safety checks -> translate into the picked language. Saved on the item.
     await setStage("simplifying");
-    const run = await synthesizeLink(ctx, link, raw.text, job.inputKind);
+    const run = await synthesizeLink(ctx, link, text, job.inputKind);
     await jobs.setSafety(jobId, run.safety, clock.nowIso());
     await jobs.mergeMeta(
       jobId,
@@ -97,38 +96,37 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
       },
       clock.nowIso(),
     );
-    await patients.setActiveLink(link.patientId, raw.linkId, link.expiresAt);
     await setStage("stored");
 
-    // 3. Email the patient the link, only once the safety checks passed.
+    // 3. Email the link to the patient and the caregiver, only once the safety checks passed.
     if (run.verified) {
       await setStage("emailing");
-      await emailPatientLink(ctx, link, raw.linkId);
+      await emailLinks(ctx, link);
       await setStage("done");
     } else {
-      await audit.append({ event: "email.skipped", linkIdHash: job.linkIdHash, actor: "system", at: clock.nowIso(), details: { reason: "needs_review", safetyReason: run.safety.reason } });
+      await audit.append({ event: "email.skipped", sumId: job.sumId, actor: "system", at: clock.nowIso(), details: { reason: "needs_review", safetyReason: run.safety.reason } });
       await setStage("needs_review");
     }
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
-    log.error({ jobId, link: lp, err: { name: (err as Error)?.name, message } }, "job failed");
+    log.error({ jobId, link: ref, err: { name: (err as Error)?.name, message } }, "job failed");
     await jobs.setStage(jobId, "failed", clock.nowIso(), message.slice(0, 500));
-    await links.setStatus(job.linkIdHash, "failed").catch(() => undefined);
-    await audit.append({ event: "job.stage", linkIdHash: job.linkIdHash, actor: "system", at: clock.nowIso(), details: { jobId, stage: "failed", error: message.slice(0, 200) } });
+    await activeLinks.setStatus(job.sumId, "failed").catch(() => undefined);
+    await summaries.update(job.sumId, { status: "failed" }).catch(() => undefined);
+    await audit.append({ event: "job.stage", sumId: job.sumId, actor: "system", at: clock.nowIso(), details: { jobId, stage: "failed", error: message.slice(0, 200) } });
   }
 }
 
 /**
- * Runs lane 3 over the clinician text for a link and stores the result: `simplified` (the English
- * fixed JSON plus the safety result) and one `translation#<lang>` per produced language. Shared by
- * the ingest job and POST /synthesize { linkId }. Sets the link status (ready | needs_review) and
- * the languages the store now holds. Throws on a provider failure; the caller marks the job.
+ * Runs lane 3 over the clinician text for a link and saves the result on the summary item:
+ * `llm-summary` (the English fixed JSON), `sum-id`, `translations` (one entry per produced
+ * language), `status`, the safety result and the run metadata. Shared by the ingest job and
+ * POST /synthesize { sumId }. Translations made on demand earlier were made from the previous
+ * English, so the map is replaced; the cache-first rule rebuilds them when a patient asks.
+ * Throws on a provider failure; the caller marks the job.
  */
-export async function synthesizeLink(ctx: AppContext, link: LinkRecord, text: string, inputKind: InputKind, extraLanguages: string[] = []): Promise<PipelineRun> {
-  const { links, secureDocs, clock } = ctx;
-  if (!link.encKey) throw new Error("link key is gone; cannot synthesize");
-  const key = link.encKey;
-  const expiresAtEpoch = epochSeconds(link.expiresAt);
+export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: string, inputKind: InputKind, extraLanguages: string[] = []): Promise<PipelineRun> {
+  const { activeLinks, summaries, clock } = ctx;
   const { languages } = resolveLanguages(link.language, extraLanguages);
 
   const run = await runPipeline(
@@ -136,60 +134,48 @@ export async function synthesizeLink(ctx: AppContext, link: LinkRecord, text: st
     { speechToText: ctx.speechToText, simplifier: ctx.simplifier, translator: ctx.translator, log: ctx.log, now: () => clock.now() },
   );
 
-  const createdAt = clock.nowIso();
-  const stored: StoredSummary = {
-    output: run.perLanguage.en,
-    safety: run.safety,
-    verified: run.verified,
-    provider: run.meta.provider,
-    model: run.meta.model,
-    usage: run.meta.usage,
-    fixture: run.meta.fixture,
-    latencyMs: run.meta.latencyMs,
-    sourceChars: run.meta.sourceChars,
+  const translations: Record<string, AiOutput> = {};
+  for (const [lang, output] of Object.entries(run.perLanguage)) if (lang !== "en") translations[lang] = output;
+  const current = await summaries.get(link.sumId);
+  const status = run.verified ? "ready" : "needs_review";
+  await summaries.update(link.sumId, {
+    "llm-summary": run.perLanguage.en,
+    "sum-id": link.sumId,
+    translations,
+    status,
+    language: link.language,
     inputKind,
-    createdAt,
-  };
-  await secureDocs.putJson({ linkIdHash: link.linkIdHash, sk: SK.simplified, key, keyVersion: link.keyVersion, value: stored, expiresAtEpochSeconds: expiresAtEpoch, createdAt });
-
-  const produced = ["en"];
-  for (const [lang, output] of Object.entries(run.perLanguage)) {
-    if (lang === "en") continue;
-    const translation: StoredTranslation = {
-      output,
-      check: run.safety.translations.find((t) => t.language === lang) ?? { language: lang, passed: true, issues: [] },
-      provider: run.meta.provider,
-      model: run.meta.model,
-      createdAt,
-    };
-    await secureDocs.putJson({ linkIdHash: link.linkIdHash, sk: SK.translation(lang), key, keyVersion: link.keyVersion, value: translation, expiresAtEpochSeconds: expiresAtEpoch, createdAt });
-    produced.push(lang);
-  }
-  // Translations made on demand earlier were made from the previous English: delete them, the
-  // cache-first rule will rebuild them from the new English when a patient asks.
-  for (const sk of await secureDocs.listKeys(link.linkIdHash)) {
-    if (sk.startsWith(SK.translationPrefix) && !produced.includes(sk.slice(SK.translationPrefix.length))) {
-      await secureDocs.delete(link.linkIdHash, sk);
-    }
-  }
-  await links.setLanguages(link.linkIdHash, produced);
-  await links.setStatus(link.linkIdHash, run.verified ? "ready" : "needs_review");
-  ctx.log.info({ link: hashPrefix(link.linkIdHash), verified: run.verified, languages: produced, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs }, "lane 3 finished");
+    safety: run.safety,
+    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, fixture: run.meta.fixture, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars, skipped: run.meta.skipped },
+  });
+  const produced = ["en", ...Object.keys(translations)];
+  await activeLinks.setLanguages(link.sumId, produced);
+  await activeLinks.setStatus(link.sumId, status);
+  ctx.log.info({ link: logRef(link.sumId), verified: run.verified, languages: produced, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs }, "lane 3 finished");
   return run;
 }
 
-/** "Email patient the link: your discharge summary is ready at this link." Console by default, SMTP, SES, or SQS + worker. */
-export async function emailPatientLink(ctx: AppContext, link: LinkRecord, linkId: string): Promise<void> {
-  const patient = await ctx.patients.getById(link.patientId);
-  if (!patient) return;
-  const mail = patientLinkEmail({ to: patient.email, link: ctx.patientUrl(linkId), expiresAt: link.expiresAt });
-  const at = ctx.clock.nowIso();
-  if (ctx.emailQueue) {
-    const r = await ctx.emailQueue.enqueue({ ...mail, linkIdHash: link.linkIdHash, kind: "patient", enqueuedAt: at });
-    await ctx.audit.append({ event: "email.queued", linkIdHash: link.linkIdHash, actor: "system", at, details: { kind: "patient", queue: "sqs", messageId: r.messageId } });
-  } else {
-    const sent = await ctx.mailer.send(mail);
-    await ctx.audit.append({ event: "email.sent", linkIdHash: link.linkIdHash, actor: "system", at, details: { kind: "patient", transport: sent.transport, messageId: sent.messageId } });
+/**
+ * The team contract's step 5: "Send email w/ link to the patient at both email, and caregiverEmail".
+ * Console by default, SMTP, SES, or SQS + worker. Returns who was sent to.
+ */
+export async function emailLinks(ctx: AppContext, link: ActiveLink): Promise<{ patient: boolean; caregiver: boolean }> {
+  const patient = await ctx.patients.getById(link.patientID);
+  if (!patient) return { patient: false, caregiver: false };
+  const url = ctx.patientUrl(link.sumId);
+  const deliveries: { kind: "patient" | "caregiver"; mail: LinkEmail }[] = [{ kind: "patient", mail: patientLinkEmail({ to: patient.email, link: url, expiresAt: link.expiresAt }) }];
+  if (patient.caregiverEmail) deliveries.push({ kind: "caregiver", mail: caregiverLinkEmail({ to: patient.caregiverEmail, link: url, expiresAt: link.expiresAt }) });
+
+  for (const { kind, mail } of deliveries) {
+    const at = ctx.clock.nowIso();
+    if (ctx.emailQueue) {
+      const r = await ctx.emailQueue.enqueue({ ...mail, sumId: link.sumId, kind, enqueuedAt: at });
+      await ctx.audit.append({ event: "email.queued", sumId: link.sumId, actor: "system", at, details: { kind, queue: "sqs", messageId: r.messageId } });
+    } else {
+      const sent = await ctx.mailer.send(mail);
+      await ctx.audit.append({ event: "email.sent", sumId: link.sumId, actor: "system", at, details: { kind, transport: sent.transport, messageId: sent.messageId } });
+    }
   }
-  await ctx.links.markEmailed(link.linkIdHash, at);
+  await ctx.activeLinks.markEmailed(link.sumId, ctx.clock.nowIso());
+  return { patient: true, caregiver: deliveries.length > 1 };
 }

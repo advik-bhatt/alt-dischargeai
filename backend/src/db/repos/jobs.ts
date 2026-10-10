@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { InputKind } from "../../docstore/documents.js";
+import type { InputKind } from "../../docstore/types.js";
 import type { PipelineSafety } from "../../pipeline/types.js";
 import type { Db } from "../index.js";
 
@@ -20,7 +20,7 @@ export type { InputKind };
 
 export interface JobRow {
   id: string;
-  link_id_hash: string;
+  sum_id: string;
   stage: JobStage;
   input_kind: InputKind;
   error: string | null;
@@ -32,7 +32,7 @@ export interface JobRow {
 
 export interface JobRecord {
   id: string;
-  linkIdHash: string;
+  sumId: string;
   stage: JobStage;
   inputKind: InputKind;
   error: string | null;
@@ -55,7 +55,7 @@ function parseJson<T>(s: string | null | undefined, fallback: T): T {
 function toRecord(r: JobRow): JobRecord {
   return {
     id: r.id,
-    linkIdHash: r.link_id_hash,
+    sumId: r.sum_id,
     stage: r.stage,
     inputKind: r.input_kind,
     error: r.error,
@@ -69,12 +69,12 @@ function toRecord(r: JobRow): JobRecord {
 export class JobsRepo {
   constructor(private readonly db: Db) {}
 
-  async create(input: { linkIdHash: string; inputKind: InputKind; now: string; meta?: Record<string, unknown> }) {
+  async create(input: { sumId: string; inputKind: InputKind; now: string; meta?: Record<string, unknown> }) {
     const id = randomUUID();
     await this.db.run(
-      `INSERT INTO jobs (id, link_id_hash, stage, input_kind, meta, created_at, updated_at)
+      `INSERT INTO jobs (id, sum_id, stage, input_kind, meta, created_at, updated_at)
        VALUES (?, ?, 'received', ?, ?, ?, ?)`,
-      [id, input.linkIdHash, input.inputKind, JSON.stringify(input.meta ?? {}), input.now, input.now],
+      [id, input.sumId, input.inputKind, JSON.stringify(input.meta ?? {}), input.now, input.now],
     );
     return (await this.get(id))!;
   }
@@ -84,8 +84,8 @@ export class JobsRepo {
     return row ? toRecord(row) : undefined;
   }
 
-  async latestForLink(linkIdHash: string): Promise<JobRecord | undefined> {
-    const row = await this.db.get<JobRow>("SELECT * FROM jobs WHERE link_id_hash = ? ORDER BY created_at DESC LIMIT 1", [linkIdHash]);
+  async latestForLink(sumId: string): Promise<JobRecord | undefined> {
+    const row = await this.db.get<JobRow>("SELECT * FROM jobs WHERE sum_id = ? ORDER BY created_at DESC LIMIT 1", [sumId]);
     return row ? toRecord(row) : undefined;
   }
 

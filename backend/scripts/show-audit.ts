@@ -1,13 +1,13 @@
 /**
- * Prints the audit log: the event trail of one link, the deletion receipts, or the latest events.
- *   npm run show-audit -- --link <linkId>     everything that happened to one link (by its hash)
+ * Prints the audit log: the event trail of one summary, the deletion receipts, or the latest events.
+ *   npm run show-audit -- --link <sumId>      everything that happened to one summary id
  *   npm run show-audit -- --receipts          deletion receipts only (what was deleted, when, by which mechanism)
  *   npm run show-audit                        the latest 200 events
- * Nothing printed here is PHI: the audit log stores link hashes, stages, counts and mechanisms only.
+ * Nothing printed here is PHI: the audit log stores ids, stages, counts and mechanisms only.
  */
 import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { createContext } from "../src/context.js";
-import { hashLinkId, isLinkIdShaped } from "../src/crypto/linkId.js";
+import { isSumIdShaped } from "../src/crypto/sumId.js";
 import type { AuditEntry } from "../src/db/repos/audit.js";
 import { createLogger } from "../src/logger.js";
 
@@ -27,19 +27,18 @@ const ctx = await createContext({
 let entries: AuditEntry[];
 let heading: string;
 if (linkArg) {
-  if (!isLinkIdShaped(linkArg)) {
-    console.error("--link expects the 22-character link id");
+  if (!isSumIdShaped(linkArg)) {
+    console.error("--link expects the 22-character sumId");
     process.exit(2);
   }
-  const hash = hashLinkId(linkArg);
-  entries = await ctx.audit.listForLink(hash);
-  const link = await ctx.links.getByHash(hash);
-  heading = `link ${hash.slice(0, 8)}: status=${link?.status ?? "unknown"} keyDestroyed=${link ? link.encKey === null : "?"} expiresAt=${link?.expiresAt ?? "?"} languages=${JSON.stringify(link?.languages ?? [])}`;
+  entries = await ctx.audit.listForLink(linkArg);
+  const link = await ctx.activeLinks.getBySumId(linkArg);
+  heading = `summary ${linkArg}: status=${link?.status ?? "unknown"} expiresAt=${link?.expiresAt ?? "?"} languages=${JSON.stringify(link?.languages ?? [])}`;
 } else if (receiptsOnly) {
   const receipts = await ctx.receipts.list();
   await ctx.close();
   console.log(asJson ? JSON.stringify({ sink: ctx.receipts.name, receipts }, null, 2) : `deletion receipts (${receipts.length}) from the ${ctx.receipts.name} sink`);
-  if (!asJson) for (const r of receipts) console.log(`  ${r.at}  ${r.deleted.padEnd(7)}  ${r.mechanism.padEnd(14)}  ${r.linkIdHash.slice(0, 8)}  ${r.uid ?? r.key ?? ""}${r.expiresAt ? `  expiresAt=${r.expiresAt}` : ""}`);
+  if (!asJson) for (const r of receipts) console.log(`  ${r.at}  ${r.deleted.padEnd(7)}  ${r.mechanism.padEnd(14)}  ${r.sumId.padEnd(22)}  ${r.uid ?? r.key ?? ""}${r.expiresAt ? `  expiresAt=${r.expiresAt}` : ""}`);
   process.exit(0);
 } else {
   entries = await ctx.audit.listRecent(200);
@@ -52,6 +51,6 @@ if (asJson) {
 } else {
   console.log(heading);
   for (const e of entries) {
-    console.log(`  ${e.at}  ${e.actor.padEnd(8)}  ${e.event.padEnd(20)}  ${e.linkIdHash ? e.linkIdHash.slice(0, 8) : "-"}  ${JSON.stringify(e.details)}`);
+    console.log(`  ${e.at}  ${e.actor.padEnd(8)}  ${e.event.padEnd(20)}  ${e.sumId ? e.sumId : "-".padEnd(22)}  ${JSON.stringify(e.details)}`);
   }
 }

@@ -6,9 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FileAuditSink, newReceipt } from "../src/audit/receipts.js";
 import { receiptsFromS3Event, handler as s3Handler } from "../src/audit/s3EventHandler.js";
 import { handler as streamHandler, isTtlDeletion, receiptsFromStreamEvent } from "../src/audit/streamHandler.js";
-import { hashLinkId, newLinkId } from "../src/crypto/linkId.js";
-import { LocalAudioStore, audioKeyFor } from "../src/data/audio.js";
-import { S3AudioStore, type S3Like } from "../src/data/s3/audio.js";
+import { newSumId } from "../src/crypto/sumId.js";
+import { LocalObjectStore, audioKeyFor, objectKindFor, pdfKeyFor, resolveObjectStore } from "../src/data/objects.js";
+import { S3ObjectStore, type S3Like } from "../src/data/s3/objects.js";
 import { findTtlRule, mergeTtlRule, RULE_ID } from "../scripts/ensure-s3-lifecycle.js";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -18,7 +18,7 @@ function fakeBucket() {
   const objects = new Map<string, { body: Buffer; contentType?: string; sse?: string }>();
   const calls: string[] = [];
   const client: S3Like = {
-    async send(cmd) {
+    async send(cmd: { constructor: { name: string } }) {
       calls.push(cmd.constructor.name);
       const input = (cmd as unknown as { input: Record<string, unknown> }).input;
       if (cmd instanceof HeadBucketCommand) return {};
@@ -42,47 +42,59 @@ function fakeBucket() {
   return { objects, calls, client };
 }
 
-describe("audio stores, lifecycle rule and deletion receipt handlers", () => {
+describe("the PDF and audio object stores, the lifecycle rule and the deletion receipt handlers", () => {
   let dir: string;
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "dischargeai-data-"));
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  it("local audio twin: keys are the link hash plus extension, put/get/delete, lifecycle listing by write time", async () => {
-    const audio = new LocalAudioStore(join(dir, "audio"));
-    const hash = hashLinkId(newLinkId());
-    const key = audioKeyFor(hash, "audio/wav", "clip.wav");
-    expect(key).toBe(`${hash}.wav`);
-    expect(audioKeyFor(hash, "application/octet-stream", "voice.webm")).toBe(`${hash}.webm`);
-    expect(audioKeyFor(hash, "application/octet-stream")).toBe(`${hash}.bin`);
-    await audio.put({ key, body: Buffer.from("RIFF fake"), contentType: "audio/wav" });
-    expect((await audio.get(key))?.body.toString()).toBe("RIFF fake");
-    expect((await audio.get(key))?.contentType).toBe("audio/wav");
-    expect(await audio.listExpired(new Date())).toEqual([]);
-    const thirtyOneDaysAgo = new Date(Date.now() - 31 * DAY);
-    utimesSync(join(dir, "audio", key), thirtyOneDaysAgo, thirtyOneDaysAgo);
-    expect(await audio.listExpired(new Date())).toEqual([{ key, createdAt: expect.any(String) }]);
-    expect(await audio.delete(key)).toBe(true);
-    expect(await audio.delete(key)).toBe(false);
-    expect(await audio.get(key)).toBeNull();
-    await expect(audio.get("../etc/passwd")).rejects.toThrow("invalid audio key");
+  it("object keys are the sumId plus an extension; the kind follows the extension", () => {
+    const sumId = newSumId();
+    expect(pdfKeyFor(sumId)).toBe(`${sumId}.pdf`);
+    expect(audioKeyFor(sumId, "audio/wav", "clip.wav")).toBe(`${sumId}.wav`);
+    expect(audioKeyFor(sumId, "application/octet-stream", "voice.webm")).toBe(`${sumId}.webm`);
+    expect(audioKeyFor(sumId, "application/octet-stream")).toBe(`${sumId}.bin`);
+    expect(objectKindFor(`${sumId}.pdf`)).toBe("pdf");
+    expect(objectKindFor(`${sumId}.mp3`)).toBe("audio");
+    expect(objectKindFor("transcripts/x.json")).toBeUndefined();
+    expect(resolveObjectStore("auto", true)).toBe("s3");
+    expect(resolveObjectStore("auto", false)).toBe("local");
+    expect(resolveObjectStore("local", true)).toBe("local");
   });
 
-  it("S3 audio store: writes with SSE-S3 (AES256), reads back, delete reports whether anything was there", async () => {
+  it("local twin of a bucket: put/get/delete, lifecycle listing by write time, no path escapes", async () => {
+    const store = new LocalObjectStore(join(dir, "pdf"));
+    const sumId = newSumId();
+    const key = pdfKeyFor(sumId);
+    await store.put({ key, body: Buffer.from("%PDF-1.4 fake"), contentType: "application/pdf" });
+    expect((await store.get(key))?.body.toString()).toBe("%PDF-1.4 fake");
+    expect((await store.get(key))?.contentType).toBe("application/pdf");
+    expect(await store.listExpired(new Date())).toEqual([]);
+    const thirtyOneDaysAgo = new Date(Date.now() - 31 * DAY);
+    utimesSync(join(dir, "pdf", key), thirtyOneDaysAgo, thirtyOneDaysAgo);
+    expect(await store.listExpired(new Date())).toEqual([{ key, createdAt: expect.any(String) }]);
+    expect(await store.delete(key)).toBe(true);
+    expect(await store.delete(key)).toBe(false);
+    expect(await store.get(key)).toBeNull();
+    await expect(store.get("../etc/passwd")).rejects.toThrow("invalid object key");
+    expect(store.describe()).toBe(`local:${join(dir, "pdf")}`);
+  });
+
+  it("S3 store: writes with SSE-S3 (AES256), reads back, delete reports whether anything was there", async () => {
     const bucket = fakeBucket();
-    const store = new S3AudioStore({ bucket: "emraudio-rh", region: "us-west-2", client: bucket.client });
+    const store = new S3ObjectStore({ bucket: "emrpdf-rh", region: "us-west-2", client: bucket.client });
     await store.headBucket();
-    const hash = hashLinkId(newLinkId());
-    const key = audioKeyFor(hash, "audio/webm");
-    await store.put({ key, body: Buffer.from("webm bytes"), contentType: "audio/webm" });
-    expect(bucket.objects.get(key)).toMatchObject({ contentType: "audio/webm", sse: "AES256" });
-    expect((await store.get(key))?.body.toString()).toBe("webm bytes");
-    expect(await store.get(`${hash}.mp3`)).toBeNull();
+    const sumId = newSumId();
+    const key = pdfKeyFor(sumId);
+    await store.put({ key, body: Buffer.from("%PDF-1.4 bytes"), contentType: "application/pdf" });
+    expect(bucket.objects.get(key)).toMatchObject({ contentType: "application/pdf", sse: "AES256" });
+    expect((await store.get(key))?.body.toString()).toBe("%PDF-1.4 bytes");
+    expect(await store.get(`${sumId}.mp3`)).toBeNull();
     expect(await store.delete(key)).toBe(true);
     expect(await store.delete(key)).toBe(false);
     expect(await store.listExpired()).toEqual([]);
-    expect(store.describe()).toBe("s3://emraudio-rh");
+    expect(store.describe()).toBe("s3://emrpdf-rh");
     expect(bucket.calls).toEqual(["HeadBucketCommand", "PutObjectCommand", "GetObjectCommand", "GetObjectCommand", "HeadObjectCommand", "DeleteObjectCommand", "HeadObjectCommand"]);
   });
 
@@ -100,49 +112,55 @@ describe("audio stores, lifecycle rule and deletion receipt handlers", () => {
     expect(mergeTtlRule(undefined).rules).toHaveLength(1);
   });
 
-  it("DynamoDB Streams handler records TTL REMOVE events on uid keys (userIdentity Service), ignores user deletes, inserts and receipt items", async () => {
-    const hash = hashLinkId(newLinkId());
+  it("DynamoDB Streams handler records TTL REMOVE events on sumId keys (userIdentity Service) and ignores user deletes, inserts, probe and receipt items", async () => {
+    const a = newSumId();
+    const b = newSumId();
     const ttl = { type: "Service", principalId: "dynamodb.amazonaws.com" };
     const event = {
       Records: [
-        { eventName: "INSERT" as const, dynamodb: { Keys: { uid: { S: `${hash}#raw` } } } },
-        { eventName: "REMOVE" as const, dynamodb: { Keys: { uid: { S: `${hash}#raw` } }, OldImage: { expiresAt: { N: "1794250337" } } } },
-        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: `${hash}#simplified` } }, OldImage: { expiresAt: { N: "1794250337" }, sk: { S: "simplified" } } } },
-        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: `${hash}#translation#es` } }, OldImage: { expiresAt: { N: "1794250337" } } } },
-        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: `receipt#${hash}#abc` } } } },
+        { eventName: "INSERT" as const, dynamodb: { Keys: { uid: { S: a } } } },
+        { eventName: "REMOVE" as const, dynamodb: { Keys: { uid: { S: a } }, OldImage: { expiresAt: { N: "1794250337" } } } },
+        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: a } }, OldImage: { expiresAt: { N: "1794250337" }, "sum-id": { S: a } } } },
+        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: b } }, OldImage: { expiresAt: { N: "1794250400" } } } },
+        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: `receipt#${a}#abc` } } } },
+        { eventName: "REMOVE" as const, userIdentity: ttl, dynamodb: { Keys: { uid: { S: "probe#0123456789abcdef" } } } },
       ],
     };
-    expect(event.Records.map(isTtlDeletion)).toEqual([false, false, true, true, true]);
+    expect(event.Records.map(isTtlDeletion)).toEqual([false, false, true, true, true, true]);
     const receipts = receiptsFromStreamEvent(event, () => new Date("2026-11-11T00:00:00.000Z"));
     expect(receipts).toEqual([
-      expect.objectContaining({ linkIdHash: hash, uid: `${hash}#simplified`, deleted: "record", mechanism: "dynamodb_ttl", source: "dynamodb-stream", expiresAt: 1794250337, at: "2026-11-11T00:00:00.000Z" }),
-      expect.objectContaining({ linkIdHash: hash, uid: `${hash}#translation#es`, mechanism: "dynamodb_ttl" }),
+      expect.objectContaining({ sumId: a, uid: a, deleted: "record", mechanism: "dynamodb_ttl", source: "dynamodb-stream", expiresAt: 1794250337, at: "2026-11-11T00:00:00.000Z" }),
+      expect.objectContaining({ sumId: b, uid: b, mechanism: "dynamodb_ttl", expiresAt: 1794250400 }),
     ]);
     const sink = new FileAuditSink(join(dir, "audit", "stream.jsonl"));
     expect(await streamHandler(event, sink)).toEqual({ receipts: 2 });
-    expect((await sink.findByLinkIdHash(hash)).map((r) => r.uid)).toEqual([`${hash}#simplified`, `${hash}#translation#es`]);
+    expect((await sink.findBySumId(a)).map((r) => r.uid)).toEqual([a]);
+    expect((await sink.list()).map((r) => r.sumId)).toEqual([a, b]);
   });
 
-  it("S3 event handler records lifecycle expirations of audio and transcript objects and ignores uploads", async () => {
-    const hash = hashLinkId(newLinkId());
+  it("S3 event handler records lifecycle expirations of PDF, audio and transcript objects and ignores uploads", async () => {
+    const sumId = newSumId();
     const event = {
       Records: [
-        { eventName: "ObjectCreated:Put", s3: { object: { key: `${hash}.wav` } } },
-        { eventName: "LifecycleExpiration:Delete", s3: { object: { key: `${hash}.wav` } } },
+        { eventName: "ObjectCreated:Put", s3: { object: { key: `${sumId}.pdf` } } },
+        { eventName: "LifecycleExpiration:Delete", s3: { object: { key: `${sumId}.pdf` } } },
+        { eventName: "LifecycleExpiration:Delete", s3: { object: { key: `${sumId}.wav` } } },
         { eventName: "LifecycleExpiration:Delete", s3: { object: { key: "transcripts/dischargeai-abc.json" } } },
       ],
     };
     const receipts = receiptsFromS3Event(event, () => new Date("2026-11-11T00:00:00.000Z"));
-    expect(receipts.map((r) => [r.linkIdHash, r.deleted, r.mechanism, r.key])).toEqual([
-      [hash, "audio", "s3_lifecycle", `${hash}.wav`],
+    expect(receipts.map((r) => [r.sumId, r.deleted, r.mechanism, r.key])).toEqual([
+      [sumId, "pdf", "s3_lifecycle", `${sumId}.pdf`],
+      [sumId, "audio", "s3_lifecycle", `${sumId}.wav`],
       ["-", "transcript", "s3_lifecycle", "transcripts/dischargeai-abc.json"],
     ]);
     const sink = new FileAuditSink(join(dir, "audit", "s3.jsonl"));
-    expect(await s3Handler(event, sink)).toEqual({ receipts: 2 });
+    expect(await s3Handler(event, sink)).toEqual({ receipts: 3 });
+    expect((await sink.findBySumId(sumId)).map((r) => r.deleted)).toEqual(["pdf", "audio"]);
   });
 
   it("refuses a receipt that would carry content", () => {
-    expect(() => newReceipt({ linkIdHash: "x", deleted: "audio", mechanism: "s3_lifecycle", source: "s3-event", key: "text: Furosemide" })).toThrow();
-    expect(() => newReceipt({ linkIdHash: "x", deleted: "record", mechanism: "purge_job", source: "purge", uid: "steps: take it" })).toThrow();
+    expect(() => newReceipt({ sumId: "x", deleted: "audio", mechanism: "s3_lifecycle", source: "s3-event", key: "text: Furosemide" })).toThrow();
+    expect(() => newReceipt({ sumId: "x", deleted: "record", mechanism: "purge_job", source: "purge", uid: "steps: take it" })).toThrow();
   });
 });

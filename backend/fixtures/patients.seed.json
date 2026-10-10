@@ -7,6 +7,8 @@
     "zipCode": "08901",
     "email": "harold.jennings@example.test",
     "phone": "+1-732-555-0101",
+    "caregiverEmail": "june.jennings@example.test",
+    "caregiverName": "June Jennings",
     "preferredLanguage": "en"
   },
   {
@@ -17,6 +19,8 @@
     "zipCode": "07102",
     "email": "marisol.reyes@example.test",
     "phone": "+1-973-555-0102",
+    "caregiverEmail": "diego.reyes@example.test",
+    "caregiverName": "Diego Reyes",
     "preferredLanguage": "es"
   },
   {
@@ -27,6 +31,8 @@
     "zipCode": "08540",
     "email": "eleanor.whitfield@example.test",
     "phone": "+1-609-555-0103",
+    "caregiverEmail": "thomas.whitfield@example.test",
+    "caregiverName": "Thomas Whitfield",
     "preferredLanguage": "en"
   },
   {
@@ -37,6 +43,8 @@
     "zipCode": "08817",
     "email": "dmitri.volkov@example.test",
     "phone": "+1-732-555-0104",
+    "caregiverEmail": null,
+    "caregiverName": null,
     "preferredLanguage": "ru"
   },
   {
@@ -47,6 +55,8 @@
     "zipCode": "08854",
     "email": "priya.natarajan@example.test",
     "phone": "+1-732-555-0105",
+    "caregiverEmail": "arun.natarajan@example.test",
+    "caregiverName": "Arun Natarajan",
     "preferredLanguage": "en"
   },
   {
@@ -57,6 +67,8 @@
     "zipCode": "08820",
     "email": "wei.zhang@example.test",
     "phone": "+1-908-555-0106",
+    "caregiverEmail": "li.zhang@example.test",
+    "caregiverName": "Li Zhang",
     "preferredLanguage": "zh"
   }
 ]

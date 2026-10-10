@@ -2,10 +2,11 @@
  * Runs the 30-day self-destruct once against the configured stores and prints what it did:
  *   npm run sweep                                  real clock: purges links whose expiry has passed
  *   DEMO_NOW=2026-11-11T00:00:00Z npm run sweep    demo: the clock is pinned 31 days ahead, so links
- *                                                  created today expire now; keys are destroyed,
- *                                                  document-store items and audio deleted, receipts written
- * Uses the same .env / Secrets Manager configuration as the server, so it works on the SQLite + local
- * twin in development and on RDS + DynamoDB + S3 in the team account. One-shot: it never resumes jobs.
+ *                                                  created today expire now; summary items, PDFs and
+ *                                                  audio are deleted and receipts written
+ * Uses the same .env / Secrets Manager configuration as the server (set the same DATABASE_URL), so it
+ * works on the SQLite + local twins in development and on RDS + DynamoDB + S3 in the team account.
+ * One-shot: it never resumes jobs.
  */
 import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { createContext } from "../src/context.js";
@@ -18,5 +19,5 @@ const ctx = await createContext({
   resumeJobs: false,
 });
 const report = await ctx.purge();
-console.log(JSON.stringify({ clock: { now: ctx.clock.nowIso(), demoNow: ctx.clock.demoNow, offsetDays: ctx.clock.offsetDays }, configSource: secrets.source, sql: ctx.db.describe, docStore: ctx.docStore.name, ...report }, null, 2));
+console.log(JSON.stringify({ clock: { now: ctx.clock.nowIso(), demoNow: ctx.clock.demoNow, offsetDays: ctx.clock.offsetDays }, configSource: secrets.source, sql: ctx.db.describe, docStore: ctx.summaries.name, pdfStore: ctx.pdf.describe(), audioStore: ctx.audio.describe(), ...report }, null, 2));
 await ctx.close();

@@ -8,16 +8,15 @@
 import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { loadConfig } from "../src/config.js";
 import { openDb } from "../src/db/index.js";
-import { migrate } from "../src/db/migrate.js";
+import { migrate, REQUIRED_TABLES } from "../src/db/migrate.js";
 
 const { env, secrets } = await loadRuntimeEnv();
 const config = loadConfig(env);
 const t0 = Date.now();
 const db = await openDb(config);
 const ran = await migrate(db);
-const tables = ["patients", "links", "jobs", "audit_log", "documents", "schema_migrations"];
 const counts: Record<string, number> = {};
-for (const t of tables) counts[t] = Number((await db.get<{ n: number | string }>(`SELECT COUNT(*) AS n FROM ${t}`))?.n ?? 0);
+for (const t of [...REQUIRED_TABLES, "schema_migrations"]) counts[t] = Number((await db.get<{ n: number | string }>(`SELECT COUNT(*) AS n FROM ${t}`))?.n ?? 0);
 const version = db.dialect === "mysql" ? (await db.get<{ v: string }>("SELECT VERSION() AS v"))?.v : (await db.get<{ v: string }>("SELECT sqlite_version() AS v"))?.v;
 await db.close();
 console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, counts, ms: Date.now() - t0 }, null, 2));

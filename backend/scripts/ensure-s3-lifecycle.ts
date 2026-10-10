@@ -1,11 +1,12 @@
 /**
- * Idempotent check of the audio bucket's 30-day lifecycle rule. The team bucket `emraudio-rh`
- * already has the rule `autodelete` (expire after 30 days, abort incomplete multipart uploads after
- * 30 days), so this script normally only reports it. When no 30-day expiration rule exists it adds
- * one named `dischargeai-autodelete-30d`, merged with the existing rules (PutBucketLifecycleConfiguration
- * replaces the whole configuration, so the merge matters).
- *   npm run ensure-s3-lifecycle            report, add the rule only when missing
- *   npm run ensure-s3-lifecycle -- --check report only, never write (exit 3 when missing)
+ * Idempotent check of a bucket's 30-day lifecycle rule. The audio bucket `emraudio-rh` already has
+ * the rule `autodelete` (expire after 30 days, abort incomplete multipart uploads after 30 days), so
+ * this script normally only reports it; `scripts/setup-s3.ts` uses the same merge for the PDF bucket.
+ * When no 30-day expiration rule exists it adds one named `dischargeai-autodelete-30d`, merged with
+ * the existing rules (PutBucketLifecycleConfiguration replaces the whole configuration, so the merge matters).
+ *   npm run ensure-s3-lifecycle                       the audio bucket: report, add the rule only when missing
+ *   npm run ensure-s3-lifecycle -- --bucket emrpdf-rh another bucket
+ *   npm run ensure-s3-lifecycle -- --check            report only, never write (exit 3 when missing)
  * IAM: s3:GetLifecycleConfiguration, s3:PutLifecycleConfiguration on the bucket.
  */
 import { GetBucketLifecycleConfigurationCommand, PutBucketLifecycleConfigurationCommand, S3Client, type LifecycleRule } from "@aws-sdk/client-s3";
@@ -41,10 +42,11 @@ export function mergeTtlRule(rules: LifecycleRule[] | undefined): { rules: Lifec
 
 const isMain = process.argv[1]?.endsWith("ensure-s3-lifecycle.ts");
 if (isMain) {
-  const checkOnly = process.argv.includes("--check");
+  const args = process.argv.slice(2);
+  const checkOnly = args.includes("--check");
   const { env, secrets } = await loadRuntimeEnv();
   const config = loadConfig(env);
-  const Bucket = config.AUDIO_BUCKET;
+  const Bucket = args.includes("--bucket") ? args[args.indexOf("--bucket") + 1] : config.AUDIO_BUCKET;
   const s3 = new S3Client({ region: config.AWS_REGION });
   let rules: LifecycleRule[] | undefined;
   try {

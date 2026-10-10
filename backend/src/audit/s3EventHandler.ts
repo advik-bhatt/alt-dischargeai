@@ -1,14 +1,14 @@
 import { loadRuntimeEnv } from "../bootstrap.js";
 import { loadConfig } from "../config.js";
-import { AUDIO_KEY_RE } from "../data/audio.js";
+import { OBJECT_KEY_RE, objectKindFor } from "../data/objects.js";
 import { createAuditSink, newReceipt, type AuditSink, type DeletionReceipt } from "./receipts.js";
 
 /**
- * Lambda handler for S3 event notifications on the audio bucket ("day 30, lifecycle expire ->
- * Audit log"). Lifecycle expirations arrive as `s3:LifecycleExpiration:Delete` (and
+ * Lambda handler for S3 event notifications on the PDF and audio buckets ("day 30, lifecycle
+ * expire -> Audit log"). Lifecycle expirations arrive as `s3:LifecycleExpiration:Delete` (and
  * `s3:LifecycleExpiration:DeleteMarkerCreated` on versioned buckets); object keys are
- * `<linkIdHash>.<ext>` for audio and `transcripts/<job>.json` for Transcribe output, so the
- * receipt carries the link hash when the key has one and never any content.
+ * `<sumId>.pdf` in emrpdf-rh, `<sumId>.<ext>` in emraudio-rh and `transcripts/<job>.json` for
+ * Transcribe output, so the receipt carries the sumId when the key has one and never any content.
  * IAM: the sink's permissions. Env: same as streamHandler.ts.
  */
 export interface S3EventRecord {
@@ -31,11 +31,11 @@ export function receiptsFromS3Event(event: S3Event, now: () => Date = () => new 
     if (!isLifecycleExpiration(r)) continue;
     const key = decodeURIComponent((r.s3?.object?.key ?? "").replace(/\+/g, " "));
     if (!key) continue;
-    const m = AUDIO_KEY_RE.exec(key);
+    const m = OBJECT_KEY_RE.exec(key);
     out.push(
       newReceipt({
-        linkIdHash: m ? m[1] : "-",
-        deleted: m ? "audio" : key.startsWith("transcripts/") ? "transcript" : "audio",
+        sumId: m ? m[1] : "-",
+        deleted: objectKindFor(key) ?? (key.startsWith("transcripts/") ? "transcript" : "audio"),
         mechanism: "s3_lifecycle",
         source: "s3-event",
         key,

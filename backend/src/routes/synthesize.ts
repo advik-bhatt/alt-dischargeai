@@ -1,15 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { AppContext } from "../context.js";
-import { hashLinkId, hashPrefix, isLinkIdShaped } from "../crypto/linkId.js";
-import type { RawDocument } from "../docstore/documents.js";
-import { SK } from "../docstore/types.js";
+import { isSumIdShaped, logRef } from "../crypto/sumId.js";
 import { AppError, badRequest, gone, notFound } from "../errors.js";
-import { emailPatientLink, synthesizeLink } from "../pipeline/ingestJob.js";
+import { emailLinks, synthesizeLink } from "../pipeline/ingestJob.js";
 import { normalizeLanguage, resolveLanguages } from "../pipeline/languages.js";
 import { runPipeline } from "../pipeline/runPipeline.js";
 
 const Body = z.object({
+  sumId: z.string().trim().optional(),
   linkId: z.string().trim().optional(),
   text: z.string().optional(),
   language: z.string().trim().optional(),
@@ -17,14 +16,14 @@ const Body = z.object({
 });
 
 /**
- * POST /synthesize (provider): the diagram's lane-3 entry point, so Person C can re-run the pipeline
- * after a prompt change without a new ingest.
+ * POST /synthesize (provider): the diagram's lane-3 entry point, so the teammate who owns the LLM
+ * agent can re-run the pipeline after a prompt change without a new ingest.
  *   { text, language?, languages? }   runs jargon-to-plain-language -> safety checks -> translate over
  *                                     the given text and returns the fixed JSON per language (nothing stored)
- *   { linkId, language?, languages? } re-runs the pipeline over the raw text stored for the link,
- *                                     replaces the stored LLM response and translations, sets the link
- *                                     status (ready | needs_review) and emails the patient the link if
- *                                     it had not been sent yet
+ *   { sumId, language?, languages? }  re-runs the pipeline over the raw-text stored on the summary item,
+ *                                     replaces llm-summary and translations, sets the status
+ *                                     (ready | needs_review) and emails the patient and caregiver if
+ *                                     the link had not been sent yet (`linkId` is accepted for `sumId`)
  * Safety-check results come back under `safety`, next to the per-language JSON, never inside it.
  */
 export function synthesizeRouter(ctx: AppContext): Router {
@@ -37,37 +36,39 @@ export function synthesizeRouter(ctx: AppContext): Router {
       if (l && !normalizeLanguage(l)) throw badRequest("invalid_language", `"${l}" is not a BCP-47 code or a language name`);
     }
 
-    if (body.linkId) {
-      if (!isLinkIdShaped(body.linkId)) throw badRequest("invalid_link", "linkId must be the 22-character id returned by POST /ingest");
-      const linkIdHash = hashLinkId(body.linkId);
-      let link = await ctx.links.getByHash(linkIdHash);
-      if (!link) throw notFound("link_not_found", "No link with that id");
-      if (link.status === "purged") throw gone("link_purged", "This link was permanently deleted after 30 days");
-      if (link.status === "expired" || !link.encKey || new Date(link.expiresAt).getTime() <= ctx.clock.now().getTime()) {
-        throw gone("link_expired", "This link expired 30 days after it was created", { expiresAt: link.expiresAt });
+    const sumId = body.sumId ?? body.linkId;
+    if (sumId) {
+      if (!isSumIdShaped(sumId)) throw badRequest("invalid_link", "sumId must be the 22-character id returned by POST /ingest");
+      let link = await ctx.activeLinks.getBySumId(sumId);
+      if (!link) throw notFound("link_not_found", "No summary with that id");
+      if (link.status === "purged") throw gone("link_purged", "This summary was permanently deleted after 30 days");
+      if (link.status === "expired" || new Date(link.expiresAt).getTime() <= ctx.clock.now().getTime()) {
+        throw gone("link_expired", "This summary expired 30 days after it was created", { expiresAt: link.expiresAt });
       }
-      const job = await ctx.jobs.latestForLink(linkIdHash);
+      const job = await ctx.jobs.latestForLink(sumId);
       if (job && !["done", "needs_review", "failed"].includes(job.stage)) {
-        throw new AppError(409, "job_in_progress", "The ingest job for this link is still running; follow GET /jobs/:jobId first", { jobId: job.id, stage: job.stage });
+        throw new AppError(409, "job_in_progress", "The ingest job for this summary is still running; follow GET /jobs/:jobId first", { jobId: job.id, stage: job.stage });
       }
-      const raw = await ctx.secureDocs.getJson<RawDocument>({ linkIdHash, sk: SK.raw, key: link.encKey });
-      if (!raw) throw new AppError(409, "no_source_text", "No clinician text is stored for this link yet (the ingest job stores it after extraction)");
+      const item = await ctx.summaries.get(sumId);
+      const text = item?.["raw-text"];
+      if (!item || !text) throw new AppError(409, "no_source_text", "No clinician text is stored for this summary yet (the ingest job stores it after extraction)");
 
       if (body.language) {
-        await ctx.links.setLanguage(linkIdHash, normalizeLanguage(body.language)!);
-        link = (await ctx.links.getByHash(linkIdHash))!;
+        await ctx.activeLinks.setLanguage(sumId, normalizeLanguage(body.language)!);
+        link = (await ctx.activeLinks.getBySumId(sumId))!;
       }
-      const run = await synthesizeLink(ctx, link, raw.text, raw.kind, extras);
+      const run = await synthesizeLink(ctx, link, text, item.inputKind, extras);
       let emailed = !!link.emailedAt;
       if (run.verified && !link.emailedAt) {
-        await emailPatientLink(ctx, link, raw.linkId);
+        await emailLinks(ctx, link);
         emailed = true;
       }
-      const after = (await ctx.links.getByHash(linkIdHash))!;
-      await ctx.audit.append({ event: "synthesize.run", linkIdHash, actor: "provider", at: ctx.clock.nowIso(), details: { verified: run.verified, languages: after.languages, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs, emailed } });
+      const after = (await ctx.activeLinks.getBySumId(sumId))!;
+      await ctx.audit.append({ event: "synthesize.run", sumId, actor: "provider", at: ctx.clock.nowIso(), details: { verified: run.verified, languages: after.languages, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs, emailed } });
       res.json({
         stored: true,
-        linkRef: hashPrefix(linkIdHash),
+        sumId,
+        linkRef: logRef(sumId),
         status: after.status,
         verified: run.verified,
         emailed,
@@ -81,7 +82,7 @@ export function synthesizeRouter(ctx: AppContext): Router {
     }
 
     const text = (body.text ?? "").trim();
-    if (!text) throw badRequest("empty_input", "Provide { linkId } or { text, language(s) }");
+    if (!text) throw badRequest("empty_input", "Provide { sumId } or { text, language(s) }");
     const { languages } = resolveLanguages(body.language, extras);
     const run = await runPipeline({ rawText: text, languages }, { speechToText: ctx.speechToText, simplifier: ctx.simplifier, translator: ctx.translator, log: ctx.log, now: () => ctx.clock.now() });
     res.json({

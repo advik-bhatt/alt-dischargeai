@@ -5,29 +5,30 @@ import type { Config } from "../config.js";
 import type { AuditRepo } from "../db/repos/audit.js";
 
 /**
- * Deletion receipts: the audit log's proof that data is gone. A receipt says WHAT was deleted (a
- * document-store item or an audio object), WHEN, BY WHICH MECHANISM (the purge job, DynamoDB TTL,
- * the S3 lifecycle rule, or the local sweeper standing in for both) and for which link hash. Never
- * any PHI: no text, no names, no language content, no raw link id. Receipts outlive the data.
+ * Deletion receipts: the audit log's proof that data is gone. A receipt says WHAT was deleted (the
+ * summary item, the PDF, the audio object), WHEN, BY WHICH MECHANISM (the purge job, DynamoDB TTL,
+ * the S3 lifecycle rule, or the local sweeper standing in for both) and for which sumId. Never any
+ * PHI: no text, no names, no language content. Receipts outlive the data; the sumId they name
+ * answers 410 from the moment the item is gone.
  * Sinks: sql (the audit_log table, default), file (JSONL twin for Lambdas without a database),
  * console (CloudWatch Logs), dynamo (receipt# items in the discharge-summaries table, never expired).
  */
-export type DeletedKind = "record" | "audio" | "transcript";
+export type DeletedKind = "record" | "pdf" | "audio" | "transcript";
 export type DeletionMechanism = "purge_job" | "dynamodb_ttl" | "s3_lifecycle" | "local_sweeper";
 export type ReceiptSource = "purge" | "sweeper" | "dynamodb-stream" | "s3-event";
 
 export interface DeletionReceipt {
   receiptId: string;
-  /** "-" when the deleted object carries no link hash (a Transcribe output object). */
-  linkIdHash: string;
+  /** "-" when the deleted object carries no sumId (a Transcribe output object). */
+  sumId: string;
   deleted: DeletedKind;
   mechanism: DeletionMechanism;
   source: ReceiptSource;
   /** When the receipt was written. */
   at: string;
-  /** The document-store item (<linkIdHash>#raw, #simplified, #translation#<lang>), for record receipts. */
+  /** The summary item's uid (= sumId), for record receipts. */
   uid?: string;
-  /** Object key, for audio and transcript objects. */
+  /** Object key, for PDF, audio and transcript objects. */
   key?: string;
   /** The TTL value the item carried, when known (epoch seconds). */
   expiresAt?: number;
@@ -48,7 +49,7 @@ export interface AuditSink {
   append(receipt: DeletionReceipt): Promise<void>;
   /** Oldest first. Console sink returns []. */
   list(limit?: number): Promise<DeletionReceipt[]>;
-  findByLinkIdHash(linkIdHash: string): Promise<DeletionReceipt[]>;
+  findBySumId(sumId: string): Promise<DeletionReceipt[]>;
 }
 
 /** The default: receipts are rows of audit_log with event `deletion.receipt`, next to the other events of the link. */
@@ -58,16 +59,16 @@ export class SqlAuditSink implements AuditSink {
   constructor(private readonly audit: AuditRepo) {}
 
   async append(receipt: DeletionReceipt): Promise<void> {
-    const { linkIdHash, at, ...details } = receipt;
-    await this.audit.append({ event: "deletion.receipt", linkIdHash: linkIdHash === "-" ? null : linkIdHash, actor: "system", at, details });
+    const { sumId, at, ...details } = receipt;
+    await this.audit.append({ event: "deletion.receipt", sumId: sumId === "-" ? null : sumId, actor: "system", at, details });
   }
 
   async list(limit = 1000): Promise<DeletionReceipt[]> {
-    return (await this.audit.listByEvent("deletion.receipt", limit)).map((e) => ({ ...(e.details as Omit<DeletionReceipt, "linkIdHash" | "at">), linkIdHash: e.linkIdHash ?? "-", at: e.at }));
+    return (await this.audit.listByEvent("deletion.receipt", limit)).map((e) => ({ ...(e.details as Omit<DeletionReceipt, "sumId" | "at">), sumId: e.sumId ?? "-", at: e.at }));
   }
 
-  async findByLinkIdHash(linkIdHash: string): Promise<DeletionReceipt[]> {
-    return (await this.audit.listForLink(linkIdHash)).filter((e) => e.event === "deletion.receipt").map((e) => ({ ...(e.details as Omit<DeletionReceipt, "linkIdHash" | "at">), linkIdHash, at: e.at }));
+  async findBySumId(sumId: string): Promise<DeletionReceipt[]> {
+    return (await this.audit.listForLink(sumId)).filter((e) => e.event === "deletion.receipt").map((e) => ({ ...(e.details as Omit<DeletionReceipt, "sumId" | "at">), sumId, at: e.at }));
   }
 }
 
@@ -89,8 +90,8 @@ export class FileAuditSink implements AuditSink {
     return lines.slice(-limit).map((l) => JSON.parse(l) as DeletionReceipt);
   }
 
-  async findByLinkIdHash(linkIdHash: string): Promise<DeletionReceipt[]> {
-    return (await this.list(Number.MAX_SAFE_INTEGER)).filter((r) => r.linkIdHash === linkIdHash);
+  async findBySumId(sumId: string): Promise<DeletionReceipt[]> {
+    return (await this.list(Number.MAX_SAFE_INTEGER)).filter((r) => r.sumId === sumId);
   }
 }
 
@@ -106,7 +107,7 @@ export class ConsoleAuditSink implements AuditSink {
     return [];
   }
 
-  async findByLinkIdHash(): Promise<DeletionReceipt[]> {
+  async findBySumId(): Promise<DeletionReceipt[]> {
     return [];
   }
 }

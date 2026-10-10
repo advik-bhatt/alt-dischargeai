@@ -63,7 +63,7 @@ Challenge brief (Rutgers Health Hack 2026, Ops Unleashed, "Discharge AI"): captu
 ## Non-functional requirements
 
 - No PHI in logs, audit rows, receipts, URLs or error bodies.
-- Node 22, TypeScript (ESM, NodeNext), Express 5, zod 4, better-sqlite3, mysql2, AWS SDK v3.
+- Node 24, TypeScript (ESM, NodeNext), Express 5, zod 4, better-sqlite3, mysql2, AWS SDK v3.
 - Tests: vitest, offline; counts recorded in the README.
 - Product law: the backend never emits text a person sends as their own. It explains and translates the clinician's instructions and speaks as itself.
 - Copy: confident present tense, no product-history narration, no em dashes.

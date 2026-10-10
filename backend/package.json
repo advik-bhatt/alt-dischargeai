@@ -5,7 +5,7 @@
   "description": "DischargeAI backend: discharge summaries in, plain-language patient links out, data self-destructs at 30 days.",
   "type": "module",
   "engines": {
-    "node": ">=22.3"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -20,11 +20,13 @@
     "fetch-rds-bundle": "sh scripts/fetch-rds-bundle.sh",
     "show-audit": "tsx scripts/show-audit.ts",
     "setup-dynamo": "tsx scripts/setup-dynamo.ts",
+    "setup-s3": "tsx scripts/setup-s3.ts",
     "ensure-s3-lifecycle": "tsx scripts/ensure-s3-lifecycle.ts",
     "email-worker": "tsx scripts/email-worker.ts",
     "live-ingest": "tsx scripts/live-ingest.ts",
     "verify-infra": "tsx scripts/verify-infra.ts",
-    "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts"
+    "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts",
+    "export-contract": "tsx scripts/export-contract.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

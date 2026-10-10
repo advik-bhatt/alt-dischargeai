@@ -3,7 +3,7 @@ import type { LinkEmail } from "./templates.js";
 
 /** Message shape on the queue. scripts/email-worker.ts consumes it (loop or Lambda handler). */
 export interface QueuedEmail extends LinkEmail {
-  linkIdHash: string;
+  sumId: string;
   kind: "patient" | "caregiver";
   enqueuedAt: string;
 }

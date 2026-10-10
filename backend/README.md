@@ -1,10 +1,10 @@
 # DischargeAI backend (branch `backend`)
 
-Discharge summaries in (pasted text, a PDF, or dictated audio), a plain-language patient link out, and every piece of data self-destructs 30 days after it was created. Node 22, TypeScript, Express 5. The patient-facing JSON is a fixed contract per language; Claude on Amazon Bedrock does the simplifying and translating; a deterministic safety check verifies every medication, dose and frequency before anything reaches a patient.
+Discharge summaries in (pasted text, a PDF, or dictated audio), a plain-language patient link out, and every piece of data self-destructs 30 days after it was created. Node 24, TypeScript, Express 5. Claude on Amazon Bedrock does the simplifying and translating; a deterministic safety check verifies every medication, dose and frequency before anything reaches a patient.
 
 ## Precedence
 
-Advik's Granola note is the source of truth: everything in it ships here as described (SQL patient table, `GET /patients`, `POST /ingest` with a 202 and asynchronous PDF-to-text, LLM simplification, DynamoDB storage and the patient email, `GET /summary`, `GET /translate` cache-first in DynamoDB). The team architecture diagram fills in whatever the note is silent on (`POST /synthesize`, `GET /p/:token`, the fixed per-language JSON, S3 audio with the 30-day lifecycle, deletion receipts in an audit log, light provider auth, unguessable hashed tokens, Transcribe Medical, safety checks). Where the two conflict, the note wins: translation is on demand with a cache, and producing the provider-picked language during synthesis is an addition, not a contradiction. The real AWS resources override the names in both documents: the table is `discharge-summaries`, not `discharge_records`. Nothing beyond the note and the diagram is a public surface on this branch.
+The team's written backend tasks doc ("HealthHack Backend Tasks") is the contract: its five items ship here with its exact route names, query parameters, body keys and DynamoDB attribute names, typos included (`GET /llm-sumary?sum-id=`). Advik's Granola note comes next (SQL patient table, `GET /patients`, `POST /ingest` with a 202 and asynchronous PDF-to-text, LLM simplification, DynamoDB storage and the patient email, cache-first translation). The team architecture diagram fills in whatever both are silent on (`POST /synthesize`, `GET /p/:token`, the fixed per-language JSON, S3 audio with the 30-day lifecycle, deletion receipts, light provider auth, Transcribe Medical, safety checks). The real AWS resources override the names in all three: the table is `discharge-summaries`, the buckets are `emrpdf-rh` and `emraudio-rh`.
 
 ## Run it
 
@@ -12,55 +12,67 @@ Advik's Granola note is the source of truth: everything in it ships here as desc
 cd backend && npm install && npm run dev
 ```
 
-That is the whole setup. With nothing configured the backend runs fully local: SQLite, the SQL twin of the document store, a local audio folder, offline AI providers driven by fixtures, and the console email transport. Six synthetic patients are seeded at boot. Docs are at `http://localhost:4000/docs`.
+Node 24 (`.nvmrc`; `engines` is `>=24`). With nothing configured the backend runs fully local: SQLite, the SQL twin of the DynamoDB table, local folders for PDFs and audio, offline AI providers driven by fixtures, and the console email transport. Six synthetic patients are seeded at boot. Docs are at `http://localhost:4000/docs`.
 
-With AWS credentials in the shell (or an instance role on the team's EC2 box) the backend reads the team secret at boot and switches to MariaDB on RDS, DynamoDB and S3 by itself. See "Team infrastructure".
+With AWS credentials in the shell (or an instance role on the team's EC2 box) the backend reads the team secret at boot and switches to MariaDB on RDS, DynamoDB and S3 by itself. See "Team infrastructure". Outside the VPC, RDS port 3306 is unreachable and the server exits with `connect ETIMEDOUT`; add `DATABASE_URL=sqlite:data/live.db` to keep Bedrock, DynamoDB and S3 live while SQL stays local.
 
 ```sh
-npm test            # 84 tests, 16 files, offline, no keys
+npm test            # offline, no keys
 npm run typecheck
 npm run demo        # the narrative below, against the running server
 ```
+
+## The team API (backend tasks doc)
+
+Provider routes need the header `x-provider-key: dev-provider-key` (the `PROVIDER_API_KEY` default). Patient routes need no header; the 128-bit random `sumId` is the credential.
+
+| Task | Route | What it does |
+| --- | --- | --- |
+| 1 | `GET /patients` (provider) | `{ "patients": [ { "ID", "DOB", "FirstName", "LastName", "ZipCode", "email", "phoneNumber", "caregiverEmail", "caregiverName" } ] }`, exactly those keys |
+| 2 | `pdfToText` (`src/extract/pdfToText.ts`) | converts a PDF buffer to text; the ingester calls it for `type: "pdf"` |
+| 3 | `POST /ingest` (provider) | JSON `{ "data", "type": "text" \| "pdf", "patientID", "language"? }`; answers `202 { "statusCode": 202, "message": "ingestion started", "sumId", "link", "jobId", "expiresAt" }` at once. A PDF goes to S3 `emrpdf-rh` and through `pdfToText`; the random path `sumId` goes into the SQL `activeLinks` table and becomes the DynamoDB `uid`; then the LLM runs, `llm-summary` and `sum-id` are saved on that item, and the link is emailed to the patient's `email` and `caregiverEmail`. Any other `type` answers `400 { "statusCode": 400, "message": "type must be text or pdf" }` |
+| 4 | `GET /llm-sumary?sum-id=` (patient) | the `llm-summary` from the DynamoDB item; `/llm-summary` and `?sum_id=` work too |
+| 5 | `GET /translation?lang=&sum_id=` (patient) | cache-first: returns `translations[lang]` from the item when present, otherwise translates the `llm-summary`, saves it under `translations[lang]` and returns it (`fromCache` says which) |
+
+Errors on every route carry `{ "statusCode", "message" }`. Patient reads answer 404 unknown, 410 expired or deleted (checked at read time, before any sweeper runs), 425 still processing, 423 held for clinician review (safety checks failed; no email was sent).
 
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
 
 1. `GET /health` shows the clock, where the configuration came from, and the active providers.
-2. `GET /patients` picks patient 1.
-3. `POST /ingest` with Example 1 (the CHF discharge summary) and `language=Spanish` answers `202 { status: "ingestion started", linkId, link, expiresAt }` at once.
-4. `GET /jobs/:id` goes `received -> simplifying -> stored -> emailing -> done`; the server terminal prints the email: "Your discharge summary is ready at this link: ...". The safety check reports 11 medications in the source, 11 in the output, nothing dropped, nothing unsupported.
-5. `GET /p/:token` returns the fixed JSON in English with `daysLeft: 30`, `expiresAt`, `availableLanguages: ["en", "es"]`.
-6. `GET /p/:token?language=es` returns Spanish from the document store (`fromCache: true`): it was produced at ingest because the provider picked it.
-7. `GET /translate?link=...&language=zh` runs the translation agent once (`fromCache: false`), the second call is served from the store (`fromCache: true`). Medication names and doses are identical in every language.
-8. `POST /synthesize { text, language: "ar" }` runs lane 3 directly and returns the JSON per language plus the safety result, storing nothing.
-9. Day 30: `DEMO_NOW=<31 days ahead> npm run sweep` runs the purge against the same stores. The data key is destroyed, the four document-store items are deleted, one deletion receipt is written per item.
-10. `GET /p/:token` and `GET /translate` answer `410 link_purged`.
-11. `npm run show-audit -- --receipts` and `npm run show-audit -- --link <linkId>` print the receipts and the link's audit trail; no PHI appears in either.
+2. `GET /patients` returns the nine keys; the demo picks patient 1.
+3. `POST /ingest` with Example 1 (the CHF discharge summary) as `{ data, type: "text", patientID, language: "Spanish" }` answers `202 "ingestion started"` with the `sumId` at once.
+4. `GET /jobs/:id` goes `received -> simplifying -> stored -> emailing -> done`; the server terminal prints two emails, one to the patient and one to the caregiver, each with the link. The safety check reports 11 medications in the source, 11 in the output, nothing dropped, nothing unsupported.
+5. `GET /llm-sumary?sum-id=` returns the plain-language JSON in English with `daysLeft: 30`, `expiresAt`, `availableLanguages: ["en", "es"]`.
+6. `GET /translation?lang=es&sum_id=` returns Spanish from the item (`fromCache: true`): it was produced at ingest because the provider picked it.
+7. `GET /translation?lang=zh&sum_id=` runs the translation agent once (`fromCache: false`); the second call is served from the item (`fromCache: true`). Medication names and doses are identical in every language.
+8. `GET /p/:token?language=es` serves the same summary on the diagram's patient route.
+9. `POST /synthesize { text, language: "ar" }` runs the AI pipeline directly and returns the JSON per language plus the safety result, storing nothing.
+10. Day 30: `DEMO_NOW=<31 days ahead> npm run sweep` runs the purge against the same stores: the summary item is deleted (and the PDF or audio object when there is one), one deletion receipt each.
+11. `GET /llm-sumary`, `GET /translation` and `GET /p/:token` answer `410 link_purged`.
+12. `npm run show-audit -- --receipts` and `npm run show-audit -- --link <sumId>` print the receipts and the summary's audit trail; no PHI appears in either.
 
-Run on 2026-10-10 in the build container with the offline providers: exit 0, every step as above.
+Run on 2026-10-10 in the build container with the offline providers on SQLite: exit 0, every step as above.
 
 ## Public surface
 
-Provider endpoints need `x-provider-key: <PROVIDER_API_KEY>`. Patient endpoints need no header; the unguessable 128-bit link id is the credential.
-
 | Method | Path | Who | What |
 | --- | --- | --- | --- |
-| GET | `/health` | anyone | clock, configuration source, providers, audio store and fallback reason |
-| GET | `/patients[?q=]` | provider | the patient list (note) |
+| GET | `/health` | anyone | clock, configuration source, providers, PDF and audio stores with any fallback reason |
+| GET | `/patients[?q=]` | provider | task 1 |
 | GET | `/patients/:id` | provider | one patient, with the active link once generated |
-| POST | `/patients` | provider | create a patient (seeding) |
-| POST | `/ingest` | provider | multipart `patientId` + one of `text`, `file` (PDF), `audio`, plus `language`; `202 "ingestion started"` (note; audio from the diagram) |
+| POST | `/patients` | provider | create a patient (seeding); takes the nine contract keys or camelCase |
+| POST | `/ingest` | provider | task 3; multipart `patientId` + one of `text`, `file` (PDF), `audio` is kept as an alias (audio comes from the diagram) |
 | GET | `/jobs/:jobId` | provider | follow the 202: stage, safety result, run metadata |
-| POST | `/synthesize` | provider | `{ text, language?, languages? }` returns the JSON per language; `{ linkId }` re-runs the pipeline over the stored raw text and stores the result (diagram) |
-| GET | `/summary?link=[&language=]` | patient | the LLM response from the document store, expiry upfront (note) |
-| GET | `/translate?link=&language=` | patient | cache-first in the document store, translation agent on a miss (note) |
-| GET | `/p/:token[?language=]` | patient | the same handler with the token in the path (diagram) |
+| POST | `/synthesize` | provider | `{ text, language?, languages? }` returns the JSON per language; `{ linkId }` (a sumId) re-runs the pipeline over the stored raw text and stores the result (diagram) |
+| GET | `/llm-sumary?sum-id=` | patient | task 4; also `/llm-summary`, `?sum_id=` |
+| GET | `/translation?lang=&sum_id=` | patient | task 5 |
+| GET | `/p/:token[?language=]` | patient | the diagram's patient page on the same handler |
+| GET | `/summary?link=`, `/translate?link=&language=` | patient | earlier spellings of tasks 4 and 5, kept as aliases |
 | GET | `/docs`, `/openapi.json` | anyone | OpenAPI 3 |
 
-Patient responses are the fixed JSON plus `{ expiresAt, daysLeft, availableLanguages, fromCache }`. Status codes: 400 malformed link or language, 404 unknown link, 410 expired or purged, 425 still processing, 423 held for clinician review (safety checks failed; no email was sent), 422 a translation that changed a name, dose or number (refused, not cached), 502 the translation agent is unavailable.
-
-The fixed JSON (`contracts/ai-output.schema.json`, `contracts/ai-output.ts`), exactly these keys per language:
+The plain-language JSON (`contracts/ai-output.schema.json`, `contracts/ai-output.ts`), exactly these keys per language:
 
 ```
 { language, steps: [{ id, text }], medications: [{ name, dose, howOften, status: new|continue|stop, why }],
@@ -69,25 +81,25 @@ The fixed JSON (`contracts/ai-output.schema.json`, `contracts/ai-output.ts`), ex
 
 Safety-check results are stored separately and returned by `POST /synthesize` and `GET /jobs/:id`, never inside the per-language object.
 
-## Lane by lane: diagram element to file
+## Where each piece lives
 
-| Diagram element | Where it lives |
+| Piece | Files |
 | --- | --- |
-| Provider front end, light provider auth | `src/middleware/providerAuth.ts` (`x-provider-key`, constant-time compare) |
-| `POST /ingest` audio/text + language, store audio, 202 | `src/routes/ingest.ts`, `src/data/audio.ts` (S3 `emraudio-rh` or local twin), `src/pipeline/ingestJob.ts` |
-| Link service, unguessable hashed tokens | `src/crypto/linkId.ts` (128 random bits, base64url; only sha256 at rest), `src/db/repos/links.ts` |
-| SQL patient table, active link | `src/db/migrations/0001_init.sql`, `src/db/repos/patients.ts`, MariaDB via `src/db/index.ts` (`MySqlDb`), SQLite locally |
+| Light provider auth | `src/middleware/providerAuth.ts` (`x-provider-key`, constant-time compare) |
+| `POST /ingest`, 202, async job | `src/routes/ingest.ts`, `src/pipeline/ingestJob.ts`, `src/pipeline/queue.ts` |
+| PDF to text | `src/extract/pdfToText.ts` (`pdfToText`, pdf-parse with a pdfjs fallback), `src/extract/text.ts` |
+| PDF and audio objects | `src/data/objects.ts` (S3 `emrpdf-rh` / `emraudio-rh` or local folders), `src/data/s3/objects.ts`, `scripts/setup-s3.ts` |
+| The random path (`sumId`) | `src/crypto/sumId.ts` (128 random bits, base64url, 22 characters) |
+| SQL: `patients`, `activeLinks`, `jobs`, `audit_log` | `src/db/migrations/0001_init.sql`, `src/db/repos/{patients,activeLinks,jobs,audit}.ts`, MariaDB via `src/db/index.ts` (`MySqlDb`), SQLite locally |
+| DynamoDB `discharge-summaries`, one item per summary | `src/docstore/dynamo.ts`, SQL twin `src/docstore/local.ts`, item type `src/docstore/types.ts`, `scripts/setup-dynamo.ts` |
 | Speech to text (Transcribe Medical) | `src/pipeline/speechToText.ts`, `src/pipeline/transcribe/medical.ts`, offline fixture `fixtures/offline/transcripts/dictation-1.json` |
-| Jargon to plain language, Bedrock Claude at grade 5 | `src/pipeline/simplify.ts`, `src/pipeline/bedrock/{converse,simplify}.ts`, `src/pipeline/prompts.ts`, offline `src/pipeline/offline/{fixtures,rules}.ts` |
+| Plain language, Bedrock Claude at grade 5 | `src/pipeline/simplify.ts`, `src/pipeline/bedrock/{converse,simplify}.ts`, `src/pipeline/prompts.ts`, offline `src/pipeline/offline/{fixtures,rules}.ts` |
 | Safety checks (never drop meds, doses, times) | `src/pipeline/safetyChecks.ts` (deterministic, both directions, plus the translation check) |
-| Translate (Spanish, Mandarin, Arabic, any BCP-47) | `src/pipeline/translate.ts`, `src/pipeline/bedrock/translate.ts`, fixtures `fixtures/offline/ai-output/example-1.{es,zh,ar}.json` |
-| Pipeline composed (`runPipeline`) | `src/pipeline/runPipeline.ts`; `POST /synthesize` in `src/routes/synthesize.ts` |
-| Fixed JSON per language | `src/contracts/aiOutput.ts`, published `contracts/ai-output.schema.json` and `contracts/ai-output.ts` (`npm run export-contract`) |
-| DynamoDB `discharge-summaries`, TTL `expiresAt` | `src/docstore/dynamo.ts`, SQL twin `src/docstore/local.ts`, encryption `src/docstore/secure.ts` + `src/crypto/envelope.ts`, `scripts/setup-dynamo.ts` |
-| `GET /p/:token`, `GET /summary`, `GET /translate` | `src/routes/patientLink.ts`, `src/routes/summary.ts`, `src/routes/translate.ts`, shared `src/routes/linkAccess.ts` |
-| Email the patient (console, SMTP, SES, optional SQS + worker) | `src/email/{mailer,templates,queue}.ts`, `scripts/email-worker.ts` |
-| Day 30 self-destruct: read-time expiry, purge, DynamoDB TTL, S3 lifecycle | `src/routes/linkAccess.ts` (410 at read time), `src/pipeline/purge.ts`, `scripts/sweep.ts`, `scripts/ensure-s3-lifecycle.ts` |
-| Deletion receipts in the audit log | `src/audit/receipts.ts` (sql, file, console, dynamo sinks), `src/audit/streamHandler.ts` (DynamoDB Streams, TTL REMOVE events), `src/audit/s3EventHandler.ts` (lifecycle expirations), `scripts/show-audit.ts` |
+| Translation agent | `src/pipeline/translate.ts`, `src/pipeline/bedrock/translate.ts`, fixtures `fixtures/offline/ai-output/example-1.{es,zh,ar}.json` |
+| Patient reads, cache-first translation | `src/routes/{llmSummary,translation,patientLink,summary,translate}.ts`, shared `src/routes/linkAccess.ts` |
+| Email the patient and the caregiver (console, SMTP, SES, optional SQS + worker) | `src/email/{mailer,templates,queue}.ts`, `emailLinks` in `src/pipeline/ingestJob.ts`, `scripts/email-worker.ts` |
+| Day 30: read-time expiry, purge, DynamoDB TTL, S3 lifecycle | `src/routes/linkAccess.ts` (410 at read time), `src/pipeline/purge.ts`, `scripts/sweep.ts` |
+| Deletion receipts | `src/audit/receipts.ts` (sql, file, console, dynamo sinks), `src/audit/streamHandler.ts` (DynamoDB Streams, TTL REMOVE events), `src/audit/s3EventHandler.ts` (lifecycle expirations), `scripts/show-audit.ts` |
 | Configuration from the team secret | `src/secrets.ts`, `src/bootstrap.ts` |
 
 ## Team infrastructure
@@ -99,10 +111,13 @@ Region `us-west-2`, account `183815333909`. All of it is wired in; the backend r
   1. `curl -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem` (`npm run fetch-rds-bundle` runs exactly this into `certs/`; a copy of the public bundle is committed, identical to the one on `feature/infra-setup`).
   2. `mysql -h patients.cleqcmkoulma.us-west-2.rds.amazonaws.com -P 3306 -u admin -p"$(aws secretsmanager get-secret-value --secret-id 'arn:aws:secretsmanager:us-west-2:183815333909:secret:hackhealth/secret-ZWa02Q' --query SecretString --output text | jq -r '.["mysql-password"]')" --ssl-verify-server-cert --ssl-ca=./global-bundle.pem` (the console's own snippet reads the RDS-managed master secret with `jq -r '.password'` instead; both work, the password is never pasted).
   The backend does the same over `mysql2`: `ssl: { ca: readFileSync(RDS_CA_BUNDLE), rejectUnauthorized: true }`, a connection pool, `CREATE DATABASE IF NOT EXISTS dischargeai`, then the migrations. Either let the secret drive it, or set `DATABASE_URL=mysql://admin:<password>@patients.cleqcmkoulma.us-west-2.rds.amazonaws.com:3306/dischargeai`. `npm run check-sql` connects, migrates and prints the server version and table counts.
-- DynamoDB table `discharge-summaries`: hash key `uid` (string), no sort key, TTL enabled on `expiresAt` (epoch seconds). Items per link: `<linkIdHash>#raw`, `<linkIdHash>#simplified`, `<linkIdHash>#translation#<lang>`, each with `pk`, `sk`, sealed `ciphertext/iv/tag`, `keyVersion`, `expiresAt`, `createdAt`. With a single hash key the per-link listing and the backstop sweep are filtered scans; fine at hackathon scale, a sort key or GSI is the production step. `npm run setup-dynamo` creates the table when missing and enables TTL, idempotently.
-- S3 bucket `emraudio-rh`: audio clips under `<linkIdHash>.<ext>` with SSE-S3 (AES256). The bucket already carries the lifecycle rule `autodelete` (expire after 30 days, abort incomplete multipart uploads after 30 days); `npm run ensure-s3-lifecycle -- --check` verifies it and the non-check form adds a 30-day rule only when none exists. If the bucket is unreachable at boot the backend falls back to the local folder and says so in `/health` (`providers.audio.fallbackReason`).
+- DynamoDB table `discharge-summaries`: hash key `uid` (string), no sort key, TTL enabled on `expiresAt` (epoch seconds). One item per summary: `uid` = `sumId`, `sum-id` (the same value), `patientID`, `raw-text`, `llm-summary` (the plain-language JSON in English), `translations` (a map keyed by language code), `language`, `status`, `createdAt`, `expiresAt`, plus the backend's own `inputKind`, `pdfKey`/`audioKey`, `safety` and `meta`. The attributes are plain so teammates can read them and their own LLM agent can write `llm-summary` into the same item; DynamoDB encrypts the table at rest. `npm run setup-dynamo` creates the table when missing and enables TTL, idempotently.
+- S3 bucket `emrpdf-rh`: uploaded PDFs under `<sumId>.pdf` with SSE-S3 (AES256). `npm run setup-s3` creates it when missing and makes sure it blocks public access, encrypts by default and expires objects after 30 days.
+- S3 bucket `emraudio-rh`: audio clips under `<sumId>.<ext>` with SSE-S3. It already carries the lifecycle rule `autodelete` (expire after 30 days, abort incomplete multipart uploads after 30 days), which `npm run setup-s3` leaves alone. If either bucket is unreachable at boot the backend falls back to the local folder and says so in `/health` (`providers.pdf.fallbackReason`, `providers.audio.fallbackReason`).
 
-IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:PutItem, GetItem, DeleteItem, Scan` on the table plus `DescribeTable, DescribeTimeToLive, UpdateTimeToLive, CreateTable` for the setup script; `bedrock:InvokeModel` on `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0`; `s3:PutObject, GetObject, DeleteObject, ListBucket` on `emraudio-rh` (plus `GetLifecycleConfiguration, PutLifecycleConfiguration` for the lifecycle script); `ses:SendEmail` when `EMAIL_TRANSPORT=ses`; `sqs:SendMessage` (and `ReceiveMessage, DeleteMessage` for the worker) when `EMAIL_QUEUE=sqs`; `transcribe:StartMedicalTranscriptionJob, GetMedicalTranscriptionJob` when `SPEECH_PROVIDER=transcribe`; the Streams handler needs `dynamodb:DescribeStream, GetRecords, GetShardIterator, ListStreams`.
+The `sumId` is stored as-is in `activeLinks`, as the DynamoDB `uid` and in the object keys, because the tasks doc has teammates join on it. It is also the patient's credential, so access to the table and the buckets stays limited to the team role.
+
+IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:PutItem, GetItem, UpdateItem, DeleteItem, Scan` on the table plus `DescribeTable, DescribeTimeToLive, UpdateTimeToLive, CreateTable` for the setup script; `bedrock:InvokeModel` on `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0`; `s3:PutObject, GetObject, DeleteObject, ListBucket` on `emrpdf-rh` and `emraudio-rh` (plus `CreateBucket, PutPublicAccessBlock, PutEncryptionConfiguration, GetLifecycleConfiguration, PutLifecycleConfiguration` for the setup script); `ses:SendEmail` when `EMAIL_TRANSPORT=ses`; `sqs:SendMessage` (and `ReceiveMessage, DeleteMessage` for the worker) when `EMAIL_QUEUE=sqs`; `transcribe:StartMedicalTranscriptionJob, GetMedicalTranscriptionJob` when `SPEECH_PROVIDER=transcribe`; the Streams handler needs `dynamodb:DescribeStream, GetRecords, GetShardIterator, ListStreams`.
 
 ### Verified live from the build container (2026-10-10, Workshop Studio role)
 
@@ -112,16 +127,15 @@ IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:
 | DynamoDB `discharge-summaries` | ACTIVE, hash key `uid`, TTL ENABLED on `expiresAt`; probe item put 84 ms, get 65 ms, delete 71 ms, gone after delete; `npm run setup-dynamo` reports no change needed |
 | S3 `emraudio-rh` | HeadBucket ok; probe object put with SSE AES256 107 ms, get 89 ms, delete 81 ms; lifecycle rule `autodelete` 30 days present |
 | Bedrock Converse | `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0` both answer the tool-based JSON call |
-| Full pipeline on Bedrock | Example 1 through `POST /ingest` with Spanish on `us.anthropic.claude-sonnet-4-6`: done, safety checks passed (11 source medications, nothing dropped or unsupported), Spanish translation check passed, Mandarin on demand produced and cached; 5,273 tokens, 31.8 s model time; `fixtures/live-samples/example-1-chf.bedrock.us.anthropic.claude-sonnet-4-6.2026-10-10.json` |
 
-`npm run verify-infra -- --bedrock` reproduces the first four rows and deletes its probe items; `LLM_PROVIDER=bedrock npm run live-ingest` reproduces the last.
+These rows were recorded before the single-item layout and `emrpdf-rh`; the live run of the five tasks on the new layout is recorded with each task below.
 
 ### Needs a key or not exercised live from the build container
 
 | Item | State |
 | --- | --- |
 | MySQL/MariaDB on RDS over port 3306 | implemented from the mysql2 API (pool, TLS with the RDS bundle, portable migrations, dialect rewrites) and tested through the shared SQL layer on SQLite; port 3306 is not reachable from the build container, so it is not exercised live. Run `npm run check-sql` from the EC2 host |
-| Amazon SES (`EMAIL_TRANSPORT=ses`), SMTP | transports construct; no sending identity here |
+| Amazon SES (`EMAIL_TRANSPORT=ses`), SMTP | transports construct; no sending identity here, so emails print to the console |
 | SQS email queue and `scripts/email-worker.ts` | producer and worker written; no queue URL here |
 | Amazon Transcribe Medical (`SPEECH_PROVIDER=transcribe`) | adapter reads the clip from the bucket by key and polls the job; not run here (the offline fixture transcript is used) |
 | DynamoDB Streams and S3 event Lambda handlers | exported handlers with tests on sample events; not deployed |
@@ -134,7 +148,7 @@ Copy `.env.example` to `.env`. Everything has a local default.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT`, `HOST`, `LOG_LEVEL` | `4000`, `0.0.0.0`, `info` | server |
-| `PATIENT_APP_URL` | `http://localhost:5173` | links look like `${PATIENT_APP_URL}/s/<linkId>` |
+| `PATIENT_APP_URL` | `http://localhost:5173` | links look like `${PATIENT_APP_URL}/s/<sumId>` |
 | `PROVIDER_API_KEY` | `dev-provider-key` | the `x-provider-key` value |
 | `DEMO_NOW` | unset | pins the app clock to an ISO moment at boot (day-30 demos); never in production |
 | `PURGE_INTERVAL_MS` | `60000` | purge timer; `0` disables it (`npm run sweep` runs it once) |
@@ -144,47 +158,47 @@ Copy `.env.example` to `.env`. Everything has a local default.
 | `DATABASE_FILE` | `data/app.db` | SQLite when nothing else is set |
 | `RDS_CA_BUNDLE` | `certs/global-bundle.pem` | AWS connection step 1 |
 | `DOC_STORE`, `DYNAMO_TABLE`, `DYNAMO_PK`, `DYNAMO_ENDPOINT` | `auto`, `discharge-summaries`, `uid`, unset | `auto` means DynamoDB when the secret resolved, else the SQL twin; set the endpoint for DynamoDB Local |
-| `KEY_VERSION` | `1` | per-link data key version |
-| `AUDIO_STORE`, `AUDIO_BUCKET`, `AUDIO_DIR` | `auto`, `emraudio-rh`, `data/audio` | `auto` means S3 when the secret resolved and the bucket answers, else the local folder |
+| `PDF_STORE`, `PDF_BUCKET`, `PDF_DIR` | `auto`, `emrpdf-rh`, `data/pdf` | `auto` means S3 when the secret resolved and the bucket answers, else the local folder |
+| `AUDIO_STORE`, `AUDIO_BUCKET`, `AUDIO_DIR` | `auto`, `emraudio-rh`, `data/audio` | same resolution for audio |
 | `AUDIT_SINK`, `AUDIT_FILE` | `sql`, `data/audit/receipts.jsonl` | where deletion receipts go: the `audit_log` table, a JSONL file, the console, or `receipt#` items in the table |
 | `LLM_PROVIDER`, `BEDROCK_MODEL_ID` | `offline`, `us.anthropic.claude-sonnet-4-6` | `bedrock` is the live provider; `anthropic` needs `ANTHROPIC_API_KEY` (`ANTHROPIC_MODEL` default `claude-opus-5-5`) |
 | `SPEECH_PROVIDER`, `TRANSCRIBE_OUTPUT_BUCKET` | `offline`, unset | `transcribe` uses Transcribe Medical over the audio bucket |
 | `EMAIL_TRANSPORT`, `EMAIL_FROM`, `SMTP_URL` | `console`, a placeholder, unset | console prints the message; `smtp`; `ses` |
 | `EMAIL_QUEUE`, `SQS_QUEUE_URL` | `none`, unset | `sqs` enqueues instead of sending; `npm run email-worker` consumes |
-| `MAX_UPLOAD_BYTES` | 15 MB | PDF and audio limit |
+| `MAX_UPLOAD_BYTES` | 15 MB | PDF and audio limit (a base64 PDF in JSON may be about 1.4 times that) |
 
-Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
+Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `setup-s3`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
 
 ## How the data lives and dies
 
-SQL (SQLite locally, MariaDB on RDS): `patients` (first name, last name, date of birth, zip code, email, phone, preferred language, active link id and its expiry), `links` (only `sha256(linkId)`, status, `expires_at = created_at + 30 days`, the per-link AES-256-GCM data key, picked language, languages held, audio key, emailed-at), `jobs` (the stage machine, the safety result, metadata), `audit_log` (events and deletion receipts, never PHI). One portable schema; `src/db/migrate.ts` rewrites the few MySQL-specific tokens.
+SQL (SQLite locally, MariaDB on RDS): `patients` (first name, last name, date of birth, zip code, email, phone, caregiver email and name, preferred language), `activeLinks` (`id`, `sumId`, `patientID`, `createdAt`, `expiresAt = createdAt + 30 days`, `status`, plus the picked language, languages held, object keys, viewed-at and emailed-at), `jobs` (the stage machine, the safety result, metadata), `audit_log` (events and deletion receipts, never PHI). One portable schema; `src/db/migrate.ts` rewrites the few MySQL-specific tokens.
 
-Document store (DynamoDB, or the SQL twin): every item is sealed with the link's data key before it is written and bound by AAD to its own `uid` and key version, so the table never holds plaintext and an item cannot be moved to another slot. The raw link id appears in the 202 response, the email and the patient row only.
+DynamoDB (or its SQL twin, the `summaries` table): one item per summary as described under "Team infrastructure".
 
 Day 30 has four layers, from the fastest to the backstop:
 
-1. Read time: every patient endpoint compares `expires_at` with the app clock and answers 410 before touching the store.
-2. The purge job (`PURGE_INTERVAL_MS`, `npm run sweep`): destroys the data key first (crypto-shredding: anything still stored is unreadable from that moment), deletes every document-store item and the audio object with one deletion receipt each, marks the link purged, clears the patient's active link.
-3. DynamoDB TTL on `expiresAt` and the S3 lifecycle rule delete whatever is left on AWS; the Streams and S3 event handlers turn those deletions into the same receipts.
-4. The backstop sweep inside the purge job deletes any expired item or 30-day-old audio file the per-link loop did not reach, with receipts.
+1. Read time: every patient route compares `expiresAt` with the app clock and answers 410 before serving anything.
+2. The purge job (`PURGE_INTERVAL_MS`, `npm run sweep`): deletes the summary item and the PDF or audio object with one deletion receipt each, marks the link purged.
+3. DynamoDB TTL on `expiresAt` and the S3 lifecycle rules delete whatever is left on AWS; the Streams and S3 event handlers turn those deletions into the same receipts.
+4. The backstop sweep inside the purge job deletes any expired item or 30-day-old object the per-link loop did not reach, with receipts.
 
-Receipts say what was deleted (the item `uid` or the object key), when, by which mechanism (`purge_job`, `dynamodb_ttl`, `s3_lifecycle`, `local_sweeper`) and for which link hash, and they outlive the data.
+Receipts say what was deleted (the item `uid` or the object key), when, by which mechanism (`purge_job`, `dynamodb_ttl`, `s3_lifecycle`, `local_sweeper`) and for which summary, and they outlive the data.
 
 ## Safety and what stays under human control
 
 - The deterministic safety check runs after every model call: every medication the source names, with its dose, frequency and duration, must appear in the output, and nothing in the output may be absent from the source. A failure holds the summary as `needs_review` (423 for the patient, no email) until a clinician re-runs it through `POST /synthesize`. Translations are checked too: names and doses verbatim, every number preserved (a digit standing in for "once" or "twice" is accepted), the same ids, counts, statuses and tiers; a translation that fails is refused and not cached.
 - The backend never writes anyone's words. It rephrases and translates the clinician's own discharge instructions for the patient and speaks as itself; it never drafts a message, note or reply for a person to send as their own.
-- No PHI in logs (pino redaction), in the audit log, in receipts, in URLs, or in error bodies. Audio objects and document items are named by the link hash only.
-- The provider key is light auth for a hackathon front end; the patient credential is the 128-bit link id, rate limited.
+- No PHI in logs (pino redaction; logs carry an 8-character hash of the sumId, never the id), in the audit log, in receipts, or in error bodies.
+- The provider key is light auth for a hackathon front end; the patient credential is the 128-bit sumId, rate limited.
 
 ## What `alt-backend` adds
 
-The other branch of this repo (`alt-backend`) keeps the surfaces this branch leaves out, as its OpenAPI listed them on 2026-10-10: the patient checklist (`GET /checklist`, `POST /checklist/complete`), the demo clock and purge endpoints under `/admin/*`, the caregiver fields on `POST /ingest`, `GET /languages`, `GET /audit` and `GET /audit/receipts`, `GET /contracts`, and extra keys on each step such as `category` and `due`. This branch folds the language list into OpenAPI, moves the demo clock to `DEMO_NOW` plus `npm run sweep`, and prints the audit log with `npm run show-audit`.
+The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves out, as its OpenAPI listed them on 2026-10-10: the patient checklist (`GET /checklist`, `POST /checklist/complete`), the demo clock and purge endpoints under `/admin/*`, `GET /languages`, `GET /audit` and `GET /audit/receipts`, `GET /contracts`, extra keys on each step such as `category` and `due`, and per-link encryption keys destroyed at expiry. This branch folds the language list into OpenAPI, moves the demo clock to `DEMO_NOW` plus `npm run sweep`, and prints the audit log with `npm run show-audit`.
 
 ## Tests
 
-`npm test`: 84 passing of 84, 16 files, offline (`LLM_PROVIDER=offline`, SQLite in memory). Coverage: patients, provider auth and the surface, ingest text/PDF/audio with the 202 and the job, needs_review on a dropped medication, summary and the fixed JSON, translate cache-first with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and audio deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table with `uid` keys and paging, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 89 passing of 89, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 
-The MariaDB path is written against the mysql2 API and tested on SQLite, not against RDS from here (see the table above). Per-link listing in DynamoDB is a filtered scan. The simplifier and translator prompts are starting points for the teammate who owns them; the contract and the safety check are what the rest of the system relies on. Audio transcription runs on the offline fixture unless Transcribe Medical is enabled.
+The MariaDB path is written against the mysql2 API and tested on SQLite, not against RDS from here (see the table above). Per-patient listing in DynamoDB is a filtered scan. The simplifier and translator prompts are starting points for the teammate who owns them; the contract and the safety check are what the rest of the system relies on. Audio transcription runs on the offline fixture unless Transcribe Medical is enabled.

@@ -15,14 +15,13 @@ export type AuditEvent =
   | "synthesize.run"
   | "link.expired"
   | "link.purged"
-  | "key.destroyed"
   | "purge.run"
   | "deletion.receipt";
 
 export interface AuditRow {
   id: number;
   event: AuditEvent;
-  link_id_hash: string | null;
+  sum_id: string | null;
   actor: AuditActor;
   at: string;
   details: string | null;
@@ -31,14 +30,14 @@ export interface AuditRow {
 export interface AuditEntry {
   id: number;
   event: AuditEvent;
-  linkIdHash: string | null;
+  sumId: string | null;
   actor: AuditActor;
   at: string;
   details: Record<string, unknown>;
 }
 
 /** Keys that must never land in audit details. The repo strips them defensively. */
-const PHI_KEYS = new Set(["text", "summary", "steps", "medications", "email", "to", "firstName", "lastName", "name", "link", "linkId", "token", "body", "output", "transcript"]);
+const PHI_KEYS = new Set(["text", "summary", "steps", "medications", "email", "to", "firstName", "lastName", "name", "link", "linkId", "token", "body", "output", "transcript", "raw-text", "llm-summary", "translations"]);
 
 function scrub(details: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -56,24 +55,24 @@ function toEntry(r: AuditRow): AuditEntry {
   } catch {
     details = {};
   }
-  return { id: Number(r.id), event: r.event, linkIdHash: r.link_id_hash, actor: r.actor, at: r.at, details };
+  return { id: Number(r.id), event: r.event, sumId: r.sum_id, actor: r.actor, at: r.at, details };
 }
 
 export class AuditRepo {
   constructor(private readonly db: Db) {}
 
-  async append(input: { event: AuditEvent; linkIdHash?: string | null; actor: AuditActor; at: string; details?: Record<string, unknown> }): Promise<void> {
-    await this.db.run("INSERT INTO audit_log (event, link_id_hash, actor, at, details) VALUES (?, ?, ?, ?, ?)", [
+  async append(input: { event: AuditEvent; sumId?: string | null; actor: AuditActor; at: string; details?: Record<string, unknown> }): Promise<void> {
+    await this.db.run("INSERT INTO audit_log (event, sum_id, actor, at, details) VALUES (?, ?, ?, ?, ?)", [
       input.event,
-      input.linkIdHash ?? null,
+      input.sumId ?? null,
       input.actor,
       input.at,
       JSON.stringify(scrub(input.details ?? {})),
     ]);
   }
 
-  async listForLink(linkIdHash: string): Promise<AuditEntry[]> {
-    const rows = await this.db.all<AuditRow>("SELECT * FROM audit_log WHERE link_id_hash = ? ORDER BY id", [linkIdHash]);
+  async listForLink(sumId: string): Promise<AuditEntry[]> {
+    const rows = await this.db.all<AuditRow>("SELECT * FROM audit_log WHERE sum_id = ? ORDER BY id", [sumId]);
     return rows.map(toEntry);
   }
 

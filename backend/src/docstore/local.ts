@@ -1,80 +1,71 @@
+import type { AiOutput } from "../contracts/aiOutput.js";
 import type { Db } from "../db/index.js";
-import { uidFor, type DocItem, type DocumentStore } from "./types.js";
+import type { SummaryItem, SummaryPatch, SummaryStore } from "./types.js";
 
 interface Row {
   uid: string;
-  pk: string;
-  sk: string;
-  ciphertext: Buffer | Uint8Array;
-  iv: Buffer | Uint8Array;
-  tag: Buffer | Uint8Array;
-  key_version: number;
+  item: string;
   expires_at: number | string;
   created_at: string;
 }
 
-function toItem(r: Row): DocItem {
-  return {
-    pk: r.pk,
-    sk: r.sk,
-    ciphertext: Buffer.from(r.ciphertext),
-    iv: Buffer.from(r.iv),
-    tag: Buffer.from(r.tag),
-    keyVersion: Number(r.key_version),
-    expiresAt: Number(r.expires_at),
-    createdAt: r.created_at,
-  };
+/** The upsert is the one statement the two engines spell differently. */
+export function upsertSummarySql(dialect: Db["dialect"]): string {
+  const insert = "INSERT INTO summaries (uid, item, expires_at, created_at) VALUES (?, ?, ?, ?)";
+  if (dialect === "mysql") return `${insert} ON DUPLICATE KEY UPDATE item = VALUES(item), expires_at = VALUES(expires_at), created_at = VALUES(created_at)`;
+  return `${insert} ON CONFLICT (uid) DO UPDATE SET item = excluded.item, expires_at = excluded.expires_at, created_at = excluded.created_at`;
 }
 
-/** The upsert is the one statement the two engines spell differently. */
-export function upsertDocumentSql(dialect: Db["dialect"]): string {
-  const insert = "INSERT INTO documents (uid, pk, sk, ciphertext, iv, tag, key_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-  if (dialect === "mysql") {
-    return `${insert} ON DUPLICATE KEY UPDATE ciphertext = VALUES(ciphertext), iv = VALUES(iv), tag = VALUES(tag), key_version = VALUES(key_version), expires_at = VALUES(expires_at), created_at = VALUES(created_at)`;
-  }
-  return `${insert} ON CONFLICT (uid) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, tag = excluded.tag, key_version = excluded.key_version, expires_at = excluded.expires_at, created_at = excluded.created_at`;
+function parse(r: Row): SummaryItem {
+  const item = JSON.parse(r.item) as SummaryItem;
+  return { ...item, uid: r.uid, translations: item.translations ?? {} };
 }
 
 /**
- * The SQL twin of `discharge-summaries` (SQLite locally, the same table on MariaDB when DOC_STORE=local
- * there). One row per item with the same `uid` the real table uses; the purge job plays the part of TTL.
+ * The SQL twin of `discharge-summaries` for local work and tests (DOC_STORE=local): one row per
+ * summary with the same uid the real table uses and the whole item as JSON; the purge job plays the
+ * part of TTL. Updates are read-merge-write, which the single-writer job queue makes safe here.
  */
-export class LocalDocumentStore implements DocumentStore {
+export class LocalSummaryStore implements SummaryStore {
   readonly name = "local" as const;
   readonly describe: string;
   private readonly upsert: string;
 
   constructor(private readonly db: Db) {
-    this.upsert = upsertDocumentSql(db.dialect);
-    this.describe = `${db.dialect}:documents (twin of discharge-summaries, key=uid)`;
+    this.upsert = upsertSummarySql(db.dialect);
+    this.describe = `${db.dialect}:summaries (twin of discharge-summaries, key=uid)`;
   }
 
-  async put(item: DocItem): Promise<void> {
-    await this.db.run(this.upsert, [uidFor(item.pk, item.sk), item.pk, item.sk, item.ciphertext, item.iv, item.tag, item.keyVersion, item.expiresAt, item.createdAt]);
+  async put(item: SummaryItem): Promise<void> {
+    await this.db.run(this.upsert, [item.uid, JSON.stringify(item), item.expiresAt, item.createdAt]);
   }
 
-  async get(pk: string, sk: string): Promise<DocItem | null> {
-    const row = await this.db.get<Row>("SELECT * FROM documents WHERE uid = ?", [uidFor(pk, sk)]);
-    return row ? toItem(row) : null;
+  async get(uid: string): Promise<SummaryItem | null> {
+    const row = await this.db.get<Row>("SELECT * FROM summaries WHERE uid = ?", [uid]);
+    return row ? parse(row) : null;
   }
 
-  async list(pk: string, skPrefix?: string): Promise<DocItem[]> {
-    const rows = skPrefix
-      ? await this.db.all<Row>("SELECT * FROM documents WHERE pk = ? AND sk LIKE ? ORDER BY sk", [pk, `${skPrefix}%`])
-      : await this.db.all<Row>("SELECT * FROM documents WHERE pk = ? ORDER BY sk", [pk]);
-    return rows.map(toItem);
+  async update(uid: string, patch: SummaryPatch): Promise<void> {
+    const current = await this.get(uid);
+    if (!current) throw new Error(`summary ${uid} does not exist`);
+    const next: SummaryItem = { ...current };
+    for (const [k, v] of Object.entries(patch)) if (v !== undefined) (next as unknown as Record<string, unknown>)[k] = v;
+    await this.put(next);
   }
 
-  async deleteAll(pk: string): Promise<number> {
-    const r = await this.db.run("DELETE FROM documents WHERE pk = ?", [pk]);
-    return r.changes;
+  async setTranslation(uid: string, lang: string, output: AiOutput): Promise<void> {
+    const current = await this.get(uid);
+    if (!current) throw new Error(`summary ${uid} does not exist`);
+    await this.put({ ...current, translations: { ...current.translations, [lang]: output } });
   }
 
-  async listExpired(nowEpochSeconds: number, limit = 500): Promise<Pick<DocItem, "pk" | "sk">[]> {
-    return this.db.all<{ pk: string; sk: string }>("SELECT pk, sk FROM documents WHERE expires_at <= ? ORDER BY expires_at LIMIT ?", [nowEpochSeconds, limit]);
+  async delete(uid: string): Promise<boolean> {
+    const r = await this.db.run("DELETE FROM summaries WHERE uid = ?", [uid]);
+    return r.changes > 0;
   }
 
-  async delete(pk: string, sk: string): Promise<void> {
-    await this.db.run("DELETE FROM documents WHERE uid = ?", [uidFor(pk, sk)]);
+  async listExpired(nowEpochSeconds: number, limit = 500): Promise<{ uid: string; expiresAt: number }[]> {
+    const rows = await this.db.all<{ uid: string; expires_at: number | string }>("SELECT uid, expires_at FROM summaries WHERE expires_at <= ? ORDER BY expires_at LIMIT ?", [nowEpochSeconds, limit]);
+    return rows.map((r) => ({ uid: r.uid, expiresAt: Number(r.expires_at) }));
   }
 }

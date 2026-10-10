@@ -6,9 +6,9 @@ const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
 
 /**
  * The migrations are written once, in portable SQL, and rewritten per dialect here:
- *   MySQL/MariaDB: AUTOINCREMENT -> AUTO_INCREMENT; BLOB -> LONGBLOB (ciphertext can exceed 64 KB);
- *                  TEXT -> MEDIUMTEXT (JSON blobs); CREATE INDEX IF NOT EXISTS -> CREATE INDEX
- *                  (MariaDB accepts IF NOT EXISTS, MySQL 8 does not; a duplicate index is ignored instead).
+ *   MySQL/MariaDB: AUTOINCREMENT -> AUTO_INCREMENT; BLOB -> LONGBLOB; TEXT -> MEDIUMTEXT (JSON blobs);
+ *                  CREATE INDEX IF NOT EXISTS -> CREATE INDEX (MariaDB accepts IF NOT EXISTS, MySQL 8
+ *                  does not; a duplicate index is ignored instead).
  *   SQLite: as written.
  */
 export function toDialect(sql: string, dialect: Dialect): string {
@@ -24,6 +24,9 @@ function isDuplicateIndex(err: unknown): boolean {
   const e = err as { code?: string; errno?: number };
   return e?.code === "ER_DUP_KEYNAME" || e?.errno === 1061;
 }
+
+/** Tables the current schema must have; a database migrated before the team contract lacks them. */
+export const REQUIRED_TABLES = ["patients", "activeLinks", "jobs", "audit_log", "summaries"] as const;
 
 /** Applies `migrations/*.sql` in name order, once each, recording them in schema_migrations. */
 export async function migrate(db: Db, now: () => string = () => new Date().toISOString()): Promise<string[]> {
@@ -47,5 +50,24 @@ export async function migrate(db: Db, now: () => string = () => new Date().toISO
     await db.run("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", [file, now()]);
     ran.push(file);
   }
+  await assertSchema(db);
   return ran;
+}
+
+/**
+ * A database created before the team contract (patients with active_link columns, a `links` table
+ * keyed by hash) records 0001_init.sql as applied but has none of the contract tables. Say so
+ * plainly instead of failing on the first query: the fix is to delete the local SQLite file.
+ */
+async function assertSchema(db: Db): Promise<void> {
+  for (const table of REQUIRED_TABLES) {
+    try {
+      await db.get(`SELECT 1 FROM ${table} LIMIT 1`);
+    } catch {
+      throw new Error(
+        `SQL schema is out of date: table "${table}" is missing. This database was migrated before the team contract. ` +
+          `Delete the local SQLite file (rm backend/data/app.db) or drop the old tables on MariaDB and start again.`,
+      );
+    }
+  }
 }

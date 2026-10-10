@@ -1,6 +1,6 @@
 import { loadRuntimeEnv } from "../bootstrap.js";
 import { loadConfig } from "../config.js";
-import { splitUid } from "../docstore/types.js";
+import { isSumIdShaped } from "../crypto/sumId.js";
 import { createAuditSink, newReceipt, type AuditSink, type DeletionReceipt } from "./receipts.js";
 
 /**
@@ -8,17 +8,17 @@ import { createAuditSink, newReceipt, type AuditSink, type DeletionReceipt } fro
  * log"). TTL deletions arrive as REMOVE records whose `userIdentity` is
  * `{ type: "Service", principalId: "dynamodb.amazonaws.com" }`; nothing else is a TTL deletion, so
  * nothing else is recorded. Enable the stream with StreamViewType OLD_IMAGE (or NEW_AND_OLD_IMAGES)
- * so the receipt can carry the `expiresAt` the item had. Keys are `{ uid: { S } }` (DYNAMO_PK);
- * receipt# items are skipped. IAM: dynamodb:DescribeStream, GetRecords, GetShardIterator,
- * ListStreams on the stream, plus the sink's permissions (AUDIT_SINK=sql with the RDS settings from
- * Secrets Manager, or dynamo, file, console).
+ * so the receipt can carry the `expiresAt` the item had. Keys are `{ uid: { S } }` (DYNAMO_PK) and a
+ * summary item's uid is its sumId; receipt# and probe items are skipped. IAM: dynamodb:DescribeStream,
+ * GetRecords, GetShardIterator, ListStreams on the stream, plus the sink's permissions (AUDIT_SINK=sql
+ * with the RDS settings from Secrets Manager, or dynamo, file, console).
  */
 export interface DynamoStreamRecord {
   eventName?: "INSERT" | "MODIFY" | "REMOVE";
   userIdentity?: { type?: string; principalId?: string };
   dynamodb?: {
     Keys?: Record<string, { S?: string }>;
-    OldImage?: { expiresAt?: { N?: string }; sk?: { S?: string }; pk?: { S?: string } };
+    OldImage?: { expiresAt?: { N?: string }; "sum-id"?: { S?: string } };
     ApproximateCreationDateTime?: number;
   };
 }
@@ -36,11 +36,9 @@ export function receiptsFromStreamEvent(event: DynamoStreamEvent, now: () => Dat
   for (const r of event.Records ?? []) {
     if (!isTtlDeletion(r)) continue;
     const uid = r.dynamodb?.Keys?.[keyAttribute]?.S;
-    if (!uid) continue;
-    const parts = splitUid(uid);
-    if (!parts) continue; // receipt# or foreign items never carry a link hash
+    if (!uid || !isSumIdShaped(uid)) continue; // receipt#, probe# or foreign items never look like a sumId
     const ttl = r.dynamodb?.OldImage?.expiresAt?.N;
-    out.push(newReceipt({ linkIdHash: parts.pk, uid, deleted: "record", mechanism: "dynamodb_ttl", source: "dynamodb-stream", expiresAt: ttl ? Number(ttl) : undefined, at: now().toISOString() }));
+    out.push(newReceipt({ sumId: uid, uid, deleted: "record", mechanism: "dynamodb_ttl", source: "dynamodb-stream", expiresAt: ttl ? Number(ttl) : undefined, at: now().toISOString() }));
   }
   return out;
 }

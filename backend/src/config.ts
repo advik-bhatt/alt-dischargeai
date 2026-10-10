@@ -26,6 +26,8 @@ const optionalString = z
   .optional()
   .transform((v) => (v === undefined || v.trim() === "" ? undefined : v.trim()));
 
+const storeMode = z.enum(["auto", "local", "s3"]).default("auto");
+
 export const ConfigSchema = z.object({
   NODE_ENV: z.string().default("development"),
   PORT: int(4000),
@@ -63,7 +65,6 @@ export const ConfigSchema = z.object({
   /** Name of the table's hash key attribute (the secret's dynamodb-table-pk). */
   DYNAMO_PK: z.string().default("uid"),
   DYNAMO_ENDPOINT: optionalString,
-  KEY_VERSION: int(1),
 
   LLM_PROVIDER: z.enum(["offline", "bedrock", "anthropic"]).default("offline"),
   AWS_REGION: z.string().default("us-west-2"),
@@ -74,9 +75,12 @@ export const ConfigSchema = z.object({
   SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
 
-  /** auto: the S3 bucket when Secrets Manager resolved (and the bucket answers), else the local twin. */
-  AUDIO_STORE: z.enum(["auto", "local", "s3"]).default("auto"),
-  /** The team's audio bucket ("EMR audio"); it already carries the 30-day lifecycle rule. */
+  /** The team contract's PDF bucket (`arn:aws:s3:::emrpdf-rh`): auto = S3 when Secrets Manager resolved and the bucket answers, else the local twin. */
+  PDF_STORE: storeMode,
+  PDF_BUCKET: z.string().default("emrpdf-rh"),
+  PDF_DIR: z.string().default("data/pdf"),
+  /** The team's audio bucket ("EMR audio"); same resolution as the PDF bucket. */
+  AUDIO_STORE: storeMode,
   AUDIO_BUCKET: z.string().default("emraudio-rh"),
   AUDIO_DIR: z.string().default("data/audio"),
   /** Where deletion receipts go: sql (audit_log, default), file, console, dynamo (receipt# items in the table). */

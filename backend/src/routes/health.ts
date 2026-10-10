@@ -1,5 +1,10 @@
 import { Router } from "express";
 import type { AppContext } from "../context.js";
+import type { ObjectStore, ObjectStoreStatus } from "../data/objects.js";
+
+function objectStoreHealth(store: ObjectStore, status: ObjectStoreStatus) {
+  return { store: status.active, requested: status.requested, bucket: status.bucket, target: store.describe(), fallbackReason: status.fallbackReason ?? null };
+}
 
 export function healthRouter(ctx: AppContext): Router {
   const r = Router();
@@ -7,6 +12,7 @@ export function healthRouter(ctx: AppContext): Router {
     res.json({
       ok: true,
       service: "dischargeai-backend",
+      node: process.version,
       clock: { now: ctx.clock.nowIso(), offsetDays: ctx.clock.offsetDays, demoNow: ctx.clock.demoNow },
       linkTtlDays: ctx.linkTtlDays,
       config: {
@@ -23,9 +29,10 @@ export function healthRouter(ctx: AppContext): Router {
         speech: ctx.speechToText.name,
         sql: ctx.db.dialect,
         sqlConnection: ctx.db.describe,
-        docStore: ctx.docStore.name,
-        docStoreTarget: ctx.docStore.describe,
-        audio: { store: ctx.audioStatus.active, requested: ctx.audioStatus.requested, bucket: ctx.audioStatus.bucket, target: ctx.audio.describe(), fallbackReason: ctx.audioStatus.fallbackReason ?? null },
+        docStore: ctx.summaries.name,
+        docStoreTarget: ctx.summaries.describe,
+        pdf: objectStoreHealth(ctx.pdf, ctx.pdfStatus),
+        audio: objectStoreHealth(ctx.audio, ctx.audioStatus),
         receipts: ctx.receipts.name,
         email: ctx.mailer.transportName,
         emailQueue: ctx.emailQueue ? "sqs" : "none",
