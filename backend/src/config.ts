@@ -35,6 +35,10 @@ export const ConfigSchema = z.object({
   PROVIDER_API_KEY: z.string().min(1).default("dev-provider-key"),
   /** Pins the app clock to this ISO-8601 moment at boot (demo of day 30). Unset in production. */
   DEMO_NOW: optionalString,
+
+  /** auto: read hackhealth/secret at startup when credentials resolve; off: environment only. */
+  SECRETS_BOOTSTRAP: z.enum(["auto", "off"]).default("auto"),
+  AWS_SECRET_ARN: z.string().default("arn:aws:secretsmanager:us-west-2:183815333909:secret:hackhealth/secret-ZWa02Q"),
   PURGE_INTERVAL_MS: int(60_000),
   MAX_UPLOAD_BYTES: int(15 * 1024 * 1024),
 
@@ -54,6 +58,8 @@ export const ConfigSchema = z.object({
 
   DOC_STORE: z.enum(["local", "dynamo"]).default("local"),
   DYNAMO_TABLE: z.string().default("dischargeai-docs"),
+  /** Name of the table's hash key attribute (the secret's dynamodb-table-pk). */
+  DYNAMO_PK: z.string().default("uid"),
   DYNAMO_ENDPOINT: optionalString,
   KEY_VERSION: int(1),
 

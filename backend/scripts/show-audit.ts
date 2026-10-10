@@ -5,19 +5,21 @@
  *   npm run show-audit                        the latest 200 events
  * Nothing printed here is PHI: the audit log stores link hashes, stages, counts and mechanisms only.
  */
+import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { createContext } from "../src/context.js";
 import { hashLinkId, isLinkIdShaped } from "../src/crypto/linkId.js";
 import type { AuditEntry } from "../src/db/repos/audit.js";
-import { loadDotEnv } from "../src/dotenv.js";
+import { createLogger } from "../src/logger.js";
 
-loadDotEnv();
 const args = process.argv.slice(2);
 const linkArg = args.includes("--link") ? args[args.indexOf("--link") + 1] : undefined;
 const receiptsOnly = args.includes("--receipts");
 const asJson = args.includes("--json");
 
+const { env, secrets } = await loadRuntimeEnv({ log: createLogger("silent") });
 const ctx = await createContext({
-  env: { ...process.env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: "silent" },
+  env: { ...env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: "silent" },
+  secrets,
   seed: false,
   resumeJobs: false,
 });

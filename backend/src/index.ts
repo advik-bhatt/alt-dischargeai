@@ -1,10 +1,9 @@
 import { buildApp } from "./app.js";
+import { loadRuntimeEnv } from "./bootstrap.js";
 import { createContext } from "./context.js";
-import { loadDotEnv } from "./dotenv.js";
 
-loadDotEnv();
-
-const ctx = await createContext();
+const { env, secrets } = await loadRuntimeEnv();
+const ctx = await createContext({ env, secrets });
 const app = buildApp(ctx);
 ctx.startPurgeTimer();
 
@@ -12,9 +11,11 @@ const server = app.listen(ctx.config.PORT, ctx.config.HOST, () => {
   ctx.log.info(
     {
       port: ctx.config.PORT,
+      configSource: secrets.source,
+      sql: ctx.db.describe,
+      docStore: ctx.docStore.name,
       llm: ctx.simplifier.name,
       speech: ctx.speechToText.name,
-      docStore: ctx.docStore.name,
       email: ctx.mailer.transportName,
       demoNow: ctx.clock.demoNow,
       purgeIntervalMs: ctx.config.PURGE_INTERVAL_MS,

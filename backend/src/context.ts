@@ -18,10 +18,15 @@ import { JobQueue } from "./pipeline/queue.js";
 import { createSimplifier, type Simplifier } from "./pipeline/simplify.js";
 import { createSpeechToText, type SpeechToText } from "./pipeline/speechToText.js";
 import { createTranslator, type Translator } from "./pipeline/translate.js";
+import type { SecretsBootstrapResult } from "./secrets.js";
+
+export const NO_SECRETS: SecretsBootstrapResult = { source: "env", applied: [], overriddenByEnv: [], missingKeys: [], reason: "not attempted", ms: 0 };
 
 /** Everything a route or a job needs, wired once at boot. Tests build one per test file. */
 export interface AppContext {
   config: Config;
+  /** Where the configuration came from (names only), for /health. */
+  secrets: SecretsBootstrapResult;
   log: Logger;
   clock: Clock;
   db: Db;
@@ -48,6 +53,8 @@ export interface AppContext {
 export interface CreateContextOptions {
   env?: Record<string, string | undefined>;
   overrides?: Partial<Config>;
+  /** The Secrets Manager bootstrap report from loadRuntimeEnv (the server); tests and offline scripts omit it. */
+  secrets?: SecretsBootstrapResult;
   /** Swap any provider in tests. */
   simplifier?: Simplifier;
   translator?: Translator;
@@ -64,6 +71,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const clock = new Clock(config.DEMO_NOW);
   if (config.DEMO_NOW) log.warn({ demoNow: config.DEMO_NOW, offsetDays: clock.offsetDays }, "DEMO_NOW is set: the app clock is pinned for a demo");
   const db = await openDb(config);
+  log.info({ sql: db.describe }, "sql connected");
   const ran = await migrate(db, () => clock.nowIso());
   if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
 
@@ -92,6 +100,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
 
   const ctx: AppContext = {
     config,
+    secrets: opts.secrets ?? NO_SECRETS,
     log,
     clock,
     db,

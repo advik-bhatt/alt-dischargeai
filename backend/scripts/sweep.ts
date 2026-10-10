@@ -7,15 +7,16 @@
  * Uses the same .env / Secrets Manager configuration as the server, so it works on the SQLite + local
  * twin in development and on RDS + DynamoDB + S3 in the team account. One-shot: it never resumes jobs.
  */
+import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { createContext } from "../src/context.js";
-import { loadDotEnv } from "../src/dotenv.js";
 
-loadDotEnv();
+const { env, secrets } = await loadRuntimeEnv();
 const ctx = await createContext({
-  env: { ...process.env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: process.env.LOG_LEVEL ?? "warn" },
+  env: { ...env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: env.LOG_LEVEL ?? "warn" },
+  secrets,
   seed: false,
   resumeJobs: false,
 });
 const report = await ctx.purge();
-console.log(JSON.stringify({ clock: { now: ctx.clock.nowIso(), demoNow: ctx.clock.demoNow, offsetDays: ctx.clock.offsetDays }, sql: ctx.db.dialect, docStore: ctx.docStore.name, ...report }, null, 2));
+console.log(JSON.stringify({ clock: { now: ctx.clock.nowIso(), demoNow: ctx.clock.demoNow, offsetDays: ctx.clock.offsetDays }, configSource: secrets.source, sql: ctx.db.describe, docStore: ctx.docStore.name, ...report }, null, 2));
 await ctx.close();

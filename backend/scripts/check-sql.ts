@@ -5,13 +5,13 @@
  *   DATABASE_URL='mysql://admin:<password>@patients.cleqcmkoulma.us-west-2.rds.amazonaws.com:3306/dischargeai' npm run check-sql
  * The password is never printed. Pass it through the environment, not on a shared command line.
  */
+import { loadRuntimeEnv } from "../src/bootstrap.js";
 import { loadConfig } from "../src/config.js";
-import { loadDotEnv } from "../src/dotenv.js";
 import { openDb } from "../src/db/index.js";
 import { migrate } from "../src/db/migrate.js";
 
-loadDotEnv();
-const config = loadConfig();
+const { env, secrets } = await loadRuntimeEnv();
+const config = loadConfig(env);
 const t0 = Date.now();
 const db = await openDb(config);
 const ran = await migrate(db);
@@ -20,4 +20,4 @@ const counts: Record<string, number> = {};
 for (const t of tables) counts[t] = Number((await db.get<{ n: number | string }>(`SELECT COUNT(*) AS n FROM ${t}`))?.n ?? 0);
 const version = db.dialect === "mysql" ? (await db.get<{ v: string }>("SELECT VERSION() AS v"))?.v : (await db.get<{ v: string }>("SELECT sqlite_version() AS v"))?.v;
 await db.close();
-console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, migrationsApplied: ran, counts, ms: Date.now() - t0 }, null, 2));
+console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, counts, ms: Date.now() - t0 }, null, 2));
