@@ -27,6 +27,7 @@ export interface PurgeReport {
  */
 export async function runPurge(ctx: AppContext): Promise<PurgeReport> {
   const { activeLinks, audit, summaries, pdf, audio, receipts, clock, log } = ctx;
+  assertDemoPurgeIsLocal(ctx);
   const ranAt = clock.nowIso();
   const report: PurgeReport = { ranAt, linksPurged: 0, documentsDeleted: 0, pdfsDeleted: 0, audioDeleted: 0, orphanDocumentsDeleted: 0, orphanObjectsDeleted: 0, purged: [], receipts: [] };
   const record = async (receipt: DeletionReceipt) => {
@@ -80,4 +81,25 @@ export async function runPurge(ctx: AppContext): Promise<PurgeReport> {
 
   await audit.append({ event: "purge.run", actor: "system", at: clock.nowIso(), details: { linksPurged: report.linksPurged, documentsDeleted: report.documentsDeleted, pdfsDeleted: report.pdfsDeleted, audioDeleted: report.audioDeleted, orphanDocumentsDeleted: report.orphanDocumentsDeleted, orphanObjectsDeleted: report.orphanObjectsDeleted, receipts: report.receipts.length } });
   return report;
+}
+
+/**
+ * DEMO_NOW pins the clock ahead so a day-30 demo can run today. Against the team's real stores that
+ * would delete live data: the TTL backstop scans the shared DynamoDB table and would remove every item
+ * created within the shift, and the per-link loop would delete the objects of every link in the shared
+ * SQL database. So a shifted purge only runs on local stores unless DEMO_PURGE_ON_AWS=yes says the
+ * account is a throwaway. Nothing is deleted when this throws.
+ */
+export function assertDemoPurgeIsLocal(ctx: Pick<AppContext, "clock" | "summaries" | "pdf" | "audio" | "config">): void {
+  if (!ctx.clock.demoNow || ctx.config.DEMO_PURGE_ON_AWS === "yes") return;
+  const remote = [
+    ctx.summaries.name === "dynamo" ? `DynamoDB (${ctx.summaries.describe})` : null,
+    ctx.pdf.name === "s3" ? ctx.pdf.describe() : null,
+    ctx.audio.name === "s3" ? ctx.audio.describe() : null,
+  ].filter((x): x is string => !!x);
+  if (!remote.length) return;
+  throw new Error(
+    `Refusing to purge with DEMO_NOW=${ctx.clock.demoNow} against ${remote.join(", ")}: the shifted clock would make recent data in the shared stores look expired and delete it. ` +
+      "Run the day-30 demo on local stores (SECRETS_BOOTSTRAP=off, or DOC_STORE=local PDF_STORE=local AUDIO_STORE=local), or set DEMO_PURGE_ON_AWS=yes on a throwaway account.",
+  );
 }

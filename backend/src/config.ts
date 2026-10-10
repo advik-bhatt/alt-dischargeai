@@ -42,6 +42,12 @@ export const ConfigSchema = z.object({
   SECRETS_BOOTSTRAP: z.enum(["auto", "off"]).default("auto"),
   AWS_SECRET_ARN: z.string().default("arn:aws:secretsmanager:us-west-2:183815333909:secret:hackhealth/secret-ZWa02Q"),
   PURGE_INTERVAL_MS: int(60_000),
+  /**
+   * The purge refuses to run with DEMO_NOW set against DynamoDB or S3: a clock pinned weeks ahead would
+   * make every recent item in the shared table (and every object of this backend's links) look expired.
+   * "yes" lifts that for a throwaway demo account only.
+   */
+  DEMO_PURGE_ON_AWS: z.enum(["no", "yes"]).default("no"),
   MAX_UPLOAD_BYTES: int(15 * 1024 * 1024),
 
   /** SQLite file for local development and tests; ":memory:" for throwaway runs. */

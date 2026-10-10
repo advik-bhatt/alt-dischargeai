@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import request from "supertest";
+import { runPurge } from "../src/pipeline/purge.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PATIENT_EN, createTestApp, examplePdf, exampleText, ingestPdf, ingestText, type TestApp } from "./helpers.js";
 
@@ -144,6 +145,36 @@ describe("30-day expiry at read time, the purge job and its deletion receipts", 
       expect(e.slice(0, 10)).toBe("2026-12-15");
     } finally {
       await pinned.close();
+    }
+  });
+
+  it("refuses a DEMO_NOW purge against DynamoDB or S3 and deletes nothing; local stores and DEMO_PURGE_ON_AWS=yes still purge", async () => {
+    const demoNow = new Date(Date.now() + 31 * 864e5).toISOString();
+    for (const allow of ["no", "yes"] as const) {
+      const pinned = await createTestApp({ env: { DEMO_NOW: demoNow, DEMO_PURGE_ON_AWS: allow } });
+      try {
+        // Ingest "today" by stepping the pinned clock back 31 days, so the link has expired at DEMO_NOW.
+        pinned.ctx.clock.advanceDays(-31);
+        const { sumId: id } = await ingestText(pinned, exampleText("example-1-chf"));
+        pinned.ctx.clock.advanceDays(31);
+        // The same context, as it would be with the team secret loaded: the summary store is DynamoDB.
+        const summaries = Object.assign(Object.create(Object.getPrototypeOf(pinned.ctx.summaries)), pinned.ctx.summaries, { name: "dynamo", describe: "dynamodb:us-west-2/discharge-summaries" });
+        const onAws = { ...pinned.ctx, summaries } as typeof pinned.ctx;
+        if (allow === "no") {
+          await expect(runPurge(onAws)).rejects.toThrow(/Refusing to purge with DEMO_NOW=.* against DynamoDB/);
+          expect(await pinned.ctx.summaries.get(id)).toBeTruthy();
+          expect((await pinned.ctx.activeLinks.getBySumId(id))?.status).not.toBe("purged");
+          // On local stores the same pinned clock purges as before.
+          const local = await runPurge(pinned.ctx);
+          expect(local.linksPurged).toBe(1);
+        } else {
+          const report = await runPurge(onAws);
+          expect(report.linksPurged).toBe(1);
+          expect(await pinned.ctx.summaries.get(id)).toBeNull();
+        }
+      } finally {
+        await pinned.close();
+      }
     }
   });
 });
