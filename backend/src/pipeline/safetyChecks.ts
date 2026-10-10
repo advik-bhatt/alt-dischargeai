@@ -365,7 +365,25 @@ export interface TranslationCheck {
 }
 
 const NUM_RE = /\d+(?:[.,]\d+)?/g;
-const numbersIn = (s: string) => (s.match(NUM_RE) ?? []).map((n) => n.replace(",", ".")).join(",");
+const numbersIn = (s: string) => (s.match(NUM_RE) ?? []).map((n) => n.replace(",", "."));
+
+/** "once", "twice", "three times", "four times" are words in English and often digits in the target language (每日1次). */
+const FREQUENCY_WORD_NUMBERS = new Set(["1", "2", "3", "4"]);
+
+/**
+ * Every number the English frequency carries must survive, unchanged, in the translation (no "3 days"
+ * turning into "30 days", nothing dropped). Digits the translation adds are accepted only when they
+ * are the frequency words above; any other added number (an invented duration, a dose) is an issue.
+ */
+export function frequencyNumbersChanged(english: string, translated: string): boolean {
+  const remaining = numbersIn(translated);
+  for (const n of numbersIn(english)) {
+    const at = remaining.indexOf(n);
+    if (at < 0) return true;
+    remaining.splice(at, 1);
+  }
+  return remaining.some((n) => !FREQUENCY_WORD_NUMBERS.has(n));
+}
 
 export function checkTranslation(english: AiOutput, translated: AiOutput): TranslationCheck {
   const issues: string[] = [];
@@ -375,7 +393,7 @@ export function checkTranslation(english: AiOutput, translated: AiOutput): Trans
     const b = translated.medications[i];
     if (a.name.trim().toLowerCase() !== b.name.trim().toLowerCase()) issues.push(`medication_name_changed:${i}`);
     if (doseTokens(a.dose).join("|") !== doseTokens(b.dose).join("|")) issues.push(`medication_dose_changed:${i}`);
-    if (numbersIn(a.howOften) !== numbersIn(b.howOften)) issues.push(`medication_frequency_numbers_changed:${i}`);
+    if (frequencyNumbersChanged(a.howOften, b.howOften)) issues.push(`medication_frequency_numbers_changed:${i}`);
     if (a.status !== b.status) issues.push(`medication_status_changed:${i}`);
   }
   if (translated.steps.length !== english.steps.length) issues.push("step_count_changed");

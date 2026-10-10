@@ -6,6 +6,7 @@ import {
   doseTokens,
   durationDays,
   extractSourceMedications,
+  frequencyNumbersChanged,
   normalizeDoseText,
   runSafetyChecks,
 } from "../src/pipeline/safetyChecks.js";
@@ -121,5 +122,15 @@ describe("safety checks (never drop meds, doses, times)", () => {
     const r = checkTranslation(en, bad);
     expect(r.passed).toBe(false);
     expect(r.issues).toEqual(expect.arrayContaining(["medication_dose_changed:0", "medication_name_changed:1", "medication_frequency_numbers_changed:3", "warning_count_changed"]));
+  });
+
+  it("frequency numbers: a digit for once/twice is fine, a lost, changed or invented number is not (seen live on Bedrock for Mandarin)", () => {
+    expect(frequencyNumbersChanged("By mouth once daily", "每日口服1次")).toBe(false);
+    expect(frequencyNumbersChanged("Twice daily", "每日2次")).toBe(false);
+    expect(frequencyNumbersChanged("By mouth twice daily for 3 additional days", "每日口服2次，再服3天")).toBe(false);
+    expect(frequencyNumbersChanged("twice a day by mouth for 3 more days", "dos veces al día por 30 días más")).toBe(true);
+    expect(frequencyNumbersChanged("twice a day by mouth for 3 more days", "dos veces al día por la boca")).toBe(true);
+    expect(frequencyNumbersChanged("once daily", "每日1次，连续10天")).toBe(true);
+    expect(frequencyNumbersChanged("0.4 mg once daily", "0.4 mg una vez al día")).toBe(false);
   });
 });
