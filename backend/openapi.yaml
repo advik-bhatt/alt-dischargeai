@@ -50,20 +50,39 @@ components:
         message: { type: string }
     Patient:
       type: object
+      description: "The team contract's patient shape (backend tasks doc, GET /patients), exactly these nine keys."
+      required: [ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName]
+      additionalProperties: false
       properties:
-        id: { type: string }
-        firstName: { type: string }
-        lastName: { type: string }
-        dateOfBirth: { type: string, format: date }
-        zipCode: { type: string }
+        ID: { type: string, example: pt-0001 }
+        DOB: { type: string, format: date, example: "1954-03-18" }
+        FirstName: { type: string }
+        LastName: { type: string }
+        ZipCode: { type: string }
         email: { type: string, format: email }
-        phone: { type: string }
-        preferredLanguage: { type: string, nullable: true, description: BCP-47; the default language for POST /ingest }
-        activeLinkId: { type: string, nullable: true, description: The current link id once the ingester generated it }
-        activeLinkExpiresAt: { type: string, format: date-time, nullable: true }
-        createdAt: { type: string, format: date-time }
+        phoneNumber: { type: string }
+        caregiverEmail: { type: string, format: email, nullable: true }
+        caregiverName: { type: string, nullable: true }
+    PatientDetail:
+      description: "GET /patients/{id}: the nine contract keys plus the preferred language and the active link."
+      allOf:
+        - $ref: "#/components/schemas/Patient"
+        - type: object
+          properties:
+            preferredLanguage: { type: string, nullable: true, description: BCP-47; the default language for POST /ingest }
+            activeLink:
+              type: object
+              nullable: true
+              properties:
+                sumId: { type: string }
+                link: { type: string }
+                status: { type: string }
+                createdAt: { type: string, format: date-time }
+                expiresAt: { type: string, format: date-time }
+                languages: { type: array, items: { type: string } }
     NewPatient:
       type: object
+      description: "The camelCase fields below, or the contract spellings (FirstName, LastName, DOB, ZipCode, phoneNumber)."
       required: [firstName, lastName, dateOfBirth, zipCode, email, phone]
       properties:
         firstName: { type: string }
@@ -72,6 +91,8 @@ components:
         zipCode: { type: string }
         email: { type: string, format: email }
         phone: { type: string }
+        caregiverEmail: { type: string, format: email, nullable: true }
+        caregiverName: { type: string, nullable: true }
         preferredLanguage: { type: string }
     Step:
       type: object
@@ -257,7 +278,7 @@ paths:
     get:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: Full patient list for the provider front end (pick who a discharge summary belongs to)
+      summary: "Task 1 of the backend tasks doc: the patient list from the SQL patients table, with ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName"
       parameters:
         - name: q
           in: query
@@ -270,9 +291,9 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [patients]
                 properties:
                   patients: { type: array, items: { $ref: "#/components/schemas/Patient" } }
-                  count: { type: integer }
         "401": { description: Missing or wrong x-provider-key, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     post:
       tags: [provider]
@@ -294,7 +315,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
-        "200": { description: Patient, content: { application/json: { schema: { $ref: "#/components/schemas/Patient" } } } }
+        "200": { description: Patient, content: { application/json: { schema: { $ref: "#/components/schemas/PatientDetail" } } } }
         "404": { description: patient_not_found }
   /ingest:
     post:

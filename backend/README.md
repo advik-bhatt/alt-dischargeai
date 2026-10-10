@@ -36,6 +36,25 @@ Provider routes need the header `x-provider-key: dev-provider-key` (the `PROVIDE
 
 Errors on every route carry `{ "statusCode", "message" }`. Patient reads answer 404 unknown, 410 expired or deleted (checked at read time, before any sweeper runs), 425 still processing, 423 held for clinician review (safety checks failed; no email was sent).
 
+## Test the five tasks with curl
+
+Start the server in one terminal (`cd backend && npm install && npm run dev`, Node 24), then paste these in another. Everything is inline JSON; nothing reads a local file.
+
+### Task 1: `GET /patients`
+
+```sh
+# The list, with exactly ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName
+curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/patients
+
+# Without the provider key: 401 {"statusCode":401,...}
+curl -s -w ' HTTP %{http_code}\n' http://localhost:4000/patients
+
+# Search by name, email or phone
+curl -s -H "x-provider-key: dev-provider-key" "http://localhost:4000/patients?q=reyes"
+```
+
+Checked on 2026-10-10 against `npm run dev` on this commit: six synthetic patients with the nine keys (`pt-0004` has no caregiver, so both caregiver keys are `null`), 401 without the key, one match for `reyes`.
+
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
@@ -197,7 +216,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 89 passing of 89, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 90 passing of 90, 15 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 

@@ -4,6 +4,7 @@ import YAML from "yaml";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { OPENAPI_FILE } from "../src/app.js";
 import { AI_OUTPUT_KEYS } from "../src/contracts/aiOutput.js";
+import { CONTRACT_PATIENT_KEYS } from "../src/db/repos/patients.js";
 import { createTestApp, type TestApp } from "./helpers.js";
 
 /** The whole public surface of this branch: the note's endpoints plus the diagram's additions, nothing else. */
@@ -41,6 +42,14 @@ describe("OpenAPI document", () => {
         expect(res.body?.error, `${method} ${path}`).not.toBe("not_found");
       }
     }
+  });
+
+  it("the Patient schema is exactly the nine keys GET /patients returns (task 1 of the backend tasks doc)", async () => {
+    expect(doc.components.schemas.Patient.required).toEqual([...CONTRACT_PATIENT_KEYS]);
+    expect(Object.keys((doc.components.schemas.Patient as { properties: Record<string, unknown> }).properties)).toEqual([...CONTRACT_PATIENT_KEYS]);
+    expect(doc.components.schemas.Patient.additionalProperties).toBe(false);
+    const res = await t.provider(request(t.app).get("/patients"));
+    for (const p of res.body.patients) expect(Object.keys(p)).toEqual(doc.components.schemas.Patient.required);
   });
 
   it("the AiOutput schema matches the contract and is served at /openapi.json", async () => {
