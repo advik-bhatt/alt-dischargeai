@@ -1,0 +1,62 @@
+{
+  "name": "dischargeai-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DischargeAI backend: discharge summaries in, plain-language patient links out, data self-destructs at 30 days.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.3"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "demo": "sh scripts/demo.sh",
+    "seed": "tsx scripts/seed.ts",
+    "create-table": "tsx scripts/create-dynamo-table.ts",
+    "email-worker": "tsx scripts/email-worker.ts",
+    "live-ingest": "tsx scripts/live-ingest.ts",
+    "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1149.0",
+    "@aws-sdk/client-dynamodb": "^3.1149.0",
+    "@aws-sdk/client-s3": "^3.1149.0",
+    "@aws-sdk/client-sesv2": "^3.1149.0",
+    "@aws-sdk/client-sqs": "^3.1149.0",
+    "@aws-sdk/client-transcribe": "^3.1149.0",
+    "@aws-sdk/lib-dynamodb": "^3.1149.0",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.1.0",
+    "p-queue": "^9.3.3",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^6.4.299",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "swagger-ui-express": "^5.0.1",
+    "text-readability": "^1.1.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.5",
+    "@types/pdfkit": "^0.17.0",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "pdfkit": "^0.20.2",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
