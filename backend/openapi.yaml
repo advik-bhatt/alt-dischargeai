@@ -29,6 +29,16 @@ components:
       in: header
       name: x-provider-key
   parameters:
+    sumIdHyphen:
+      name: sum-id
+      in: query
+      description: "The sumId from POST /ingest (22 characters). The tasks doc's spelling; sum_id is accepted too"
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+    sumIdUnderscore:
+      name: sum_id
+      in: query
+      description: The same id, as GET /translation spells it
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
     link:
       name: link
       in: query
@@ -139,6 +149,20 @@ components:
         medications: { type: array, items: { $ref: "#/components/schemas/Medication" } }
         followUps: { type: array, items: { $ref: "#/components/schemas/FollowUp" } }
         warnings: { type: array, items: { $ref: "#/components/schemas/Warning" } }
+    LlmSummaryView:
+      type: object
+      required: ["sum-id", "llm-summary", expiresAt, daysLeft, availableLanguages]
+      properties:
+        "sum-id": { type: string }
+        sumId: { type: string, description: The same value as sum-id }
+        patientID: { type: string }
+        language: { type: string, enum: [en] }
+        status: { type: string }
+        "llm-summary": { $ref: "#/components/schemas/AiOutput" }
+        availableLanguages: { type: array, items: { type: string }, description: English first, then the translations held on the item }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        daysLeft: { type: integer }
     PatientView:
       description: What GET /summary, GET /p/{token} and GET /translate return. The fixed JSON plus the expiry facts.
       allOf:
@@ -404,6 +428,34 @@ paths:
         "404": { description: link_not_found }
         "409": { description: "job_in_progress (the ingest job has not finished) or no_source_text" }
         "410": { description: link_expired or link_purged }
+  /llm-sumary:
+    get:
+      tags: [patient]
+      summary: "Task 4 of the backend tasks doc (spelled so): the llm-summary from the DynamoDB item for a summary id"
+      parameters:
+        - $ref: "#/components/parameters/sumIdHyphen"
+        - $ref: "#/components/parameters/sumIdUnderscore"
+      responses:
+        "200": { description: The item's llm-summary, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
+        "400": { description: "missing_sum_id or invalid_link", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: link_not_found }
+        "410": { description: link_expired (checked at read time, before any purge) or link_purged }
+        "423": { description: needs_review }
+        "425": { description: "processing; body carries { stage, jobId }" }
+  /llm-summary:
+    get:
+      tags: [patient]
+      summary: The same handler as /llm-sumary, correctly spelled
+      parameters:
+        - $ref: "#/components/parameters/sumIdHyphen"
+        - $ref: "#/components/parameters/sumIdUnderscore"
+      responses:
+        "200": { description: The item's llm-summary, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
+        "400": { description: "missing_sum_id or invalid_link" }
+        "404": { description: link_not_found }
+        "410": { description: link_expired or link_purged }
+        "423": { description: needs_review }
+        "425": { description: processing }
   /summary:
     get:
       tags: [patient]

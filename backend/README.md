@@ -105,6 +105,33 @@ Checked on 2026-10-10 against `npm run dev` on this commit: every response as de
 
 Checked live the same day from the build container (team secret loaded, `LLM_PROVIDER=bedrock`, `DATABASE_URL=sqlite:data/live.db` because RDS port 3306 is not reachable from there): the text above for `pt-0001` and the task 2 PDF for `pt-0002` both went `done` and verified on `us.anthropic.claude-sonnet-4-6` (about 5.5 s of model time each, both jobs finished within 14 s). Read back with boto3, each `discharge-summaries` item had `uid` equal to `sum-id`, `patientID`, `raw-text`, `llm-summary` (a map), `translations` (a map holding `es`), `language`, `status: ready`, `createdAt` and `expiresAt` (a number, 30 days out); TTL is enabled on `expiresAt`. The PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, SSE AES256. `emrpdf-rh` was created that day by `npm run setup-s3 -- --bucket emrpdf-rh` (public access blocked, AES256 by default, objects expire after 30 days); a second run changed nothing.
 
+### Task 4: `GET /llm-sumary?sum-id=`
+
+Use the `sumId` from a task 3 response (patient routes need no key):
+
+```sh
+# The llm-summary saved on the DynamoDB item, with "sum-id", expiresAt, daysLeft and availableLanguages
+curl -s "http://localhost:4000/llm-sumary?sum-id=<sumId>"
+
+# The same item on the correct spelling and with sum_id
+curl -s "http://localhost:4000/llm-summary?sum_id=<sumId>"
+
+# A well-formed id nobody issued: 404; no id: 400
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=AAAAAAAAAAAAAAAAAAAAAA"
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary"
+```
+
+To see day 30, stop the server and start it with the clock 31 days ahead and the purge timer off, then read the same `sumId` again: `410 link_expired`, decided at read time before anything is deleted. That summary stays expired after you restart normally, so ingest a fresh one for task 5.
+
+```sh
+DEMO_NOW=$(node -e 'console.log(new Date(Date.now()+31*864e5).toISOString())') PURGE_INTERVAL_MS=0 npm run dev
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=<sumId>"
+```
+
+While the LLM is still working the route answers `425 processing`; with the offline provider that window is a few milliseconds, so `npm test` holds the model on a gate to check it.
+
+Checked on 2026-10-10 against `npm run dev` on this commit: 200 with the summary, identical bodies on both spellings, 404, 400, and 410 after the restart 31 days ahead. Checked live the same day: `GET /llm-sumary` on the task 3 live server returned the summary Bedrock wrote, read from the `discharge-summaries` item.
+
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
@@ -266,7 +293,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 96 passing of 96, 16 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 101 passing of 101, 17 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 

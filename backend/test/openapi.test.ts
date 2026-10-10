@@ -7,7 +7,7 @@ import { AI_OUTPUT_KEYS } from "../src/contracts/aiOutput.js";
 import { CONTRACT_PATIENT_KEYS } from "../src/db/repos/patients.js";
 import { createTestApp, type TestApp } from "./helpers.js";
 
-/** The whole public surface of this branch: the note's endpoints plus the diagram's additions, nothing else. */
+/** The whole public surface of this branch: the tasks doc's routes, the note's endpoints and the diagram's additions, nothing else. */
 const SURFACE: Record<string, string[]> = {
   "/health": ["get"],
   "/patients": ["get", "post"],
@@ -18,6 +18,8 @@ const SURFACE: Record<string, string[]> = {
   "/summary": ["get"],
   "/translate": ["get"],
   "/p/{token}": ["get"],
+  "/llm-sumary": ["get"],
+  "/llm-summary": ["get"],
 };
 
 describe("OpenAPI document", () => {
