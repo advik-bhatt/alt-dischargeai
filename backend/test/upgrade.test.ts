@@ -86,6 +86,29 @@ describe("upgrading a database made by the pre-contract backend", () => {
     d.close();
   });
 
+  it("SQLite: recovers a file that an earlier attempt left half upgraded (scratch table activeLinks_rebuild, 0002 not recorded)", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "dischargeai-halfway-")), "old.db");
+    const db = new Database(file);
+    db.pragma("foreign_keys = ON");
+    db.exec("CREATE TABLE schema_migrations (name VARCHAR(120) PRIMARY KEY, applied_at VARCHAR(32) NOT NULL)");
+    for (const s of splitStatements(PRE_CONTRACT_SQL)) db.exec(s);
+    for (const s of [...LEGACY_ROWS, ...TEAM_TABLE]) db.exec(s);
+    // What the second, failed start left behind on 2026-10-10: the scratch table of 0002, nothing else.
+    db.exec("CREATE TABLE activeLinks_rebuild (id INTEGER PRIMARY KEY, sumId VARCHAR(32))");
+    db.close();
+    await expectUpgraded({ DATABASE_FILE: file }, async (sql) => {
+      const d = new Database(file, { readonly: true });
+      try {
+        return Number((d.prepare(sql).get() as { n: number }).n);
+      } finally {
+        d.close();
+      }
+    });
+    const d = new Database(file, { readonly: true });
+    expect(d.prepare("SELECT name FROM sqlite_master WHERE name = 'activeLinks_rebuild'").get()).toBeUndefined();
+    d.close();
+  });
+
   // Runs against a real MySQL/MariaDB when MYSQL_TEST_URL is set (a user who may create and drop
   // databases), e.g. MYSQL_TEST_URL='mysql://admin:pw@127.0.0.1:3306/x?insecure=1' npm test.
   it.skipIf(!process.env.MYSQL_TEST_URL)("MySQL/MariaDB: the same upgrade, including the database-wide foreign key names", async () => {

@@ -112,20 +112,25 @@ export async function migrate(db: Db, now: () => string = () => new Date().toISO
   const applied = new Set((await db.all<{ name: string }>("SELECT name FROM schema_migrations")).map((r) => r.name));
   const files = migrationFilesFor(readdirSync(MIGRATIONS_DIR), db.dialect);
   const ran: string[] = [];
-  for (const file of files) {
-    if (applied.has(file)) continue;
-    const sql = toDialect(readFileSync(join(MIGRATIONS_DIR, file), "utf8"), db.dialect);
-    for (const statement of splitStatements(sql)) {
-      try {
-        await db.exec(statement);
-      } catch (err) {
-        if (db.dialect === "mysql" && /^CREATE INDEX/i.test(statement) && isDuplicateIndex(err)) continue;
-        if (db.dialect === "mysql" && /DROP FOREIGN KEY/i.test(statement) && isMissingKey(err)) continue;
-        throw err;
+  try {
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      const sql = toDialect(readFileSync(join(MIGRATIONS_DIR, file), "utf8"), db.dialect);
+      for (const statement of splitStatements(sql)) {
+        try {
+          await db.exec(statement);
+        } catch (err) {
+          if (db.dialect === "mysql" && /^CREATE INDEX/i.test(statement) && isDuplicateIndex(err)) continue;
+          if (db.dialect === "mysql" && /DROP FOREIGN KEY/i.test(statement) && isMissingKey(err)) continue;
+          throw err;
+        }
       }
+      await db.run("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", [file, now()]);
+      ran.push(file);
     }
-    await db.run("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", [file, now()]);
-    ran.push(file);
+  } finally {
+    // 0002 on SQLite turns foreign keys off while it rebuilds a table; a failure must not leave them off.
+    if (db.dialect === "sqlite") await db.exec("PRAGMA foreign_keys = ON");
   }
   await assertSchema(db);
   return ran;

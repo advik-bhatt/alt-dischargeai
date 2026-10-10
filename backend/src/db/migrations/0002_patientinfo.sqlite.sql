@@ -4,6 +4,8 @@
 -- (a database migrated by the earlier 0001 has it, and foreign keys are enforced here). The old
 -- `patients` table, if any, is left untouched and unused.
 PRAGMA foreign_keys = OFF;
+-- A previous run that stopped half way (SQLite DDL here is not transactional) leaves this scratch table.
+DROP TABLE IF EXISTS activeLinks_rebuild;
 CREATE TABLE activeLinks_rebuild (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sumId VARCHAR(32) NOT NULL,
