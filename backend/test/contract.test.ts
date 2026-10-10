@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AI_OUTPUT_KEYS, AiOutputSchema, publishedAiOutputSchema } from "../src/contracts/aiOutput.js";
 import { loadAiOutputFixture } from "../src/pipeline/offline/fixtures.js";
+import { checkTranslation } from "../src/pipeline/safetyChecks.js";
 
 const CONTRACTS = join(import.meta.dirname, "..", "contracts");
 
@@ -31,5 +32,22 @@ describe("lane 3 contract (fixed JSON per language)", () => {
     expect(AiOutputSchema.safeParse(extra).success).toBe(false);
     const missing = { language: "en", steps: [], medications: [], followUps: [] };
     expect(AiOutputSchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("the Example 1 fixtures in Spanish, Mandarin and Arabic validate and keep every name, dose, number, id, status and tier", () => {
+    const en = loadAiOutputFixture("example-1", "en")!;
+    for (const lang of ["es", "zh", "ar"]) {
+      const out = loadAiOutputFixture("example-1", lang);
+      expect(out, lang).toBeDefined();
+      expect(out!.language).toBe(lang);
+      expect(Object.keys(out!).sort()).toEqual([...AI_OUTPUT_KEYS].sort());
+      expect(AiOutputSchema.safeParse(out).success).toBe(true);
+      expect(checkTranslation(en, out!), lang).toEqual({ language: lang, passed: true, issues: [] });
+      expect(out!.steps.map((s) => s.text)).not.toEqual(en.steps.map((s) => s.text));
+      for (const m of out!.medications) {
+        if (m.name === "Ibuprofen/other NSAIDs" || m.status === "continue") continue;
+        expect(out!.steps.some((s) => s.text.toLowerCase().includes(m.name.toLowerCase())), `${lang} ${m.name}`).toBe(true);
+      }
+    }
   });
 });

@@ -1,0 +1,187 @@
+{
+  "language": "zh",
+  "steps": [
+    {
+      "id": "med-1",
+      "text": "每天早上服用 Furosemide 40 mg，一天一次"
+    },
+    {
+      "id": "med-2",
+      "text": "每天服用 Losartan 25 mg，一天一次"
+    },
+    {
+      "id": "med-3",
+      "text": "每天服用 Empagliflozin 10 mg，一天一次"
+    },
+    {
+      "id": "med-4",
+      "text": "服用 Amoxicillin-clavulanate 875/125 mg，一天两次，直到吃完（还有 3 天）"
+    },
+    {
+      "id": "med-5",
+      "text": "停用 lisinopril。在医生另有指示前，暂停 spironolactone"
+    },
+    {
+      "id": "vital-1",
+      "text": "每天早上在同一时间称体重，把体重和您的感觉记下来"
+    },
+    {
+      "id": "lab-1",
+      "text": "在第一次复诊之前或当天做肾功能和钾的血液检查（基础代谢检查）（1 周内）"
+    },
+    {
+      "id": "appt-1",
+      "text": "去看您的家庭医生（大约 1 周内）"
+    },
+    {
+      "id": "appt-2",
+      "text": "去看您的心脏科医生（大约 1 周内）"
+    },
+    {
+      "id": "life-1",
+      "text": "吃低盐饮食：每天大约 2 克钠"
+    },
+    {
+      "id": "life-2",
+      "text": "遵守心衰团队给您的饮水量限制"
+    }
+  ],
+  "medications": [
+    {
+      "name": "Furosemide",
+      "dose": "40 mg",
+      "howOften": "每天口服一次",
+      "status": "new",
+      "why": "一种利尿药（排水药）。它帮助身体排出多余的水分，让您呼吸更轻松。您会更常排尿；请在早上服用。"
+    },
+    {
+      "name": "Losartan",
+      "dose": "25 mg",
+      "howOften": "每天口服一次",
+      "status": "new",
+      "why": "帮助您的心脏并降低血压。它取代了 lisinopril。"
+    },
+    {
+      "name": "Empagliflozin",
+      "dose": "10 mg",
+      "howOften": "每天口服一次",
+      "status": "new",
+      "why": "帮助您的心脏和糖尿病。"
+    },
+    {
+      "name": "Amoxicillin-clavulanate",
+      "dose": "875/125 mg",
+      "howOften": "每天口服两次，再服 3 天",
+      "status": "new",
+      "why": "一种抗生素，用来治完您的肺炎。即使感觉好了，也要把每一次药都吃完。"
+    },
+    {
+      "name": "Metoprolol succinate",
+      "dose": "50 mg",
+      "howOften": "每天一次",
+      "status": "continue",
+      "why": "让心跳变慢，帮助心脏泵血更有力。"
+    },
+    {
+      "name": "Apixaban",
+      "dose": "5 mg",
+      "howOften": "每天两次",
+      "status": "continue",
+      "why": "一种抗凝血药（血液稀释剂），防止心律不齐引起的血栓。注意出血。"
+    },
+    {
+      "name": "Atorvastatin",
+      "dose": "40 mg",
+      "howOften": "每天晚上",
+      "status": "continue",
+      "why": "降低胆固醇，保护您的心脏。"
+    },
+    {
+      "name": "Metformin",
+      "dose": "500 mg",
+      "howOften": "每天两次",
+      "status": "continue",
+      "why": "控制您的血糖。只要肾功能检查稳定，就继续服用。"
+    },
+    {
+      "name": "Lisinopril",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "已停用。现在由 Losartan 代替，所以不要两种都吃。"
+    },
+    {
+      "name": "Spironolactone",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "暂停，直到医生检查您的肾功能和钾的血液检查。不要自行恢复服用。"
+    },
+    {
+      "name": "Ibuprofen/other NSAIDs",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "避免布洛芬之类的止痛药。它们会伤害您的心脏和肾脏。服用任何止痛药前请先问医生。"
+    }
+  ],
+  "followUps": [
+    {
+      "who": "家庭医生",
+      "when": "大约 1 周内",
+      "why": "检查您的恢复情况、肾功能检查和您的药物"
+    },
+    {
+      "who": "心脏科（心脏医生）",
+      "when": "大约 1 周内",
+      "why": "检查您的心衰治疗计划，并决定何时恢复 spironolactone"
+    },
+    {
+      "who": "心衰团队",
+      "when": "如果体重上升很快，立即联系",
+      "why": "在水分再次积聚前调整您的利尿药"
+    }
+  ],
+  "warnings": [
+    {
+      "text": "胸痛或胸闷",
+      "tier": "call911"
+    },
+    {
+      "text": "晕倒或严重头晕",
+      "tier": "call911"
+    },
+    {
+      "text": "新出现的意识混乱或严重无力",
+      "tier": "call911"
+    },
+    {
+      "text": "严重呼吸困难，尤其是在休息时",
+      "tier": "call911"
+    },
+    {
+      "text": "腿或肚子迅速肿胀",
+      "tier": "er"
+    },
+    {
+      "text": "尿量比平时少很多",
+      "tier": "er"
+    },
+    {
+      "text": "即使用了抗生素，仍然发烧或咳嗽加重",
+      "tier": "er"
+    },
+    {
+      "text": "体重快速增加，或肿胀、气短加重；按照心衰团队给您的体重计划处理",
+      "tier": "clinic"
+    },
+    {
+      "text": "服用 apixaban 期间出现任何让您担心的出血",
+      "tier": "clinic"
+    },
+    {
+      "text": "在开始任何新药之前，包括非处方止痛药",
+      "tier": "clinic"
+    }
+  ]
+}
