@@ -17,7 +17,6 @@ export type AuditEvent =
   | "link.purged"
   | "key.destroyed"
   | "purge.run"
-  | "clock.advanced"
   | "deletion.receipt";
 
 export interface AuditRow {

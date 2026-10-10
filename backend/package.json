@@ -15,6 +15,8 @@
     "typecheck": "tsc --noEmit",
     "demo": "sh scripts/demo.sh",
     "seed": "tsx scripts/seed.ts",
+    "sweep": "tsx scripts/sweep.ts",
+    "show-audit": "tsx scripts/show-audit.ts",
     "create-table": "tsx scripts/create-dynamo-table.ts",
     "email-worker": "tsx scripts/email-worker.ts",
     "live-ingest": "tsx scripts/live-ingest.ts",

@@ -8,8 +8,6 @@ import type { AppContext } from "./context.js";
 import { errorHandler } from "./middleware/errors.js";
 import { providerAuth } from "./middleware/providerAuth.js";
 import { rateLimit } from "./middleware/rateLimit.js";
-import { adminRouter } from "./routes/admin.js";
-import { auditRouter } from "./routes/audit.js";
 import { healthRouter } from "./routes/health.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { jobsRouter } from "./routes/jobs.js";
@@ -56,12 +54,10 @@ export function buildApp(ctx: AppContext): Express {
   }
 
   // Provider endpoints (light auth): x-provider-key on these prefixes only.
-  app.use(["/patients", "/ingest", "/jobs", "/audit", "/admin"], providerAuth(ctx.config.PROVIDER_API_KEY));
+  app.use(["/patients", "/ingest", "/jobs"], providerAuth(ctx.config.PROVIDER_API_KEY));
   app.use(patientsRouter(ctx));
   app.use(ingestRouter(ctx));
   app.use(jobsRouter(ctx));
-  app.use(auditRouter(ctx));
-  if (ctx.config.DEMO_MODE) app.use(adminRouter(ctx));
 
   // Patient endpoints: authenticated by the unguessable link id, lightly rate limited.
   app.use(["/summary", "/translate"], rateLimit({ capacity: 120, refillPerSecond: 2 }));

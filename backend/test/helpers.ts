@@ -61,10 +61,11 @@ export const TEST_ENV: Record<string, string> = {
 
 export async function createTestApp(opts: CreateContextOptions = {}): Promise<TestApp> {
   const mailer = recordingMailer();
+  const { env, ...rest } = opts;
   const ctx = await createContext({
-    env: { ...process.env, ...TEST_ENV, ...(opts.env ?? {}) },
+    env: { ...process.env, ...TEST_ENV, ...(env ?? {}) },
     mailer,
-    ...opts,
+    ...rest,
   });
   const app = buildApp(ctx);
   return {

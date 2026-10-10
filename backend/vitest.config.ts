@@ -14,7 +14,6 @@ export default defineConfig({
       DOC_STORE: "local",
       EMAIL_TRANSPORT: "console",
       EMAIL_QUEUE: "none",
-      DEMO_MODE: "true",
       PURGE_INTERVAL_MS: "0",
       DATABASE_FILE: ":memory:",
       LOG_LEVEL: "silent",

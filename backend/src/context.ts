@@ -54,12 +54,15 @@ export interface CreateContextOptions {
   speechToText?: SpeechToText;
   mailer?: Mailer;
   seed?: boolean;
+  /** Re-enqueue jobs left unfinished by a previous process (the API server does; one-shot scripts must not). */
+  resumeJobs?: boolean;
 }
 
 export async function createContext(opts: CreateContextOptions = {}): Promise<AppContext> {
   const config = loadConfig(opts.env ?? process.env, opts.overrides);
   const log = createLogger(config.LOG_LEVEL);
-  const clock = new Clock();
+  const clock = new Clock(config.DEMO_NOW);
+  if (config.DEMO_NOW) log.warn({ demoNow: config.DEMO_NOW, offsetDays: clock.offsetDays }, "DEMO_NOW is set: the app clock is pinned for a demo");
   const db = await openDb(config);
   const ran = await migrate(db, () => clock.nowIso());
   if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
@@ -123,10 +126,12 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   };
 
   // Resume jobs that were in flight when the process last stopped.
-  const unfinished = await jobs.listUnfinished();
-  for (const job of unfinished) {
-    log.info({ jobId: job.id, stage: job.stage }, "resuming unfinished job");
-    ctx.enqueueIngest(job.id);
+  if (opts.resumeJobs !== false) {
+    const unfinished = await jobs.listUnfinished();
+    for (const job of unfinished) {
+      log.info({ jobId: job.id, stage: job.stage }, "resuming unfinished job");
+      ctx.enqueueIngest(job.id);
+    }
   }
 
   return ctx;

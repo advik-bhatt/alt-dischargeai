@@ -21,12 +21,12 @@ describe("30-day expiry at read time and the purge job", () => {
     expect(ok.status).toBe(200);
     expect(ok.body.daysLeft).toBe(30);
 
-    await t.provider(request(t.app).post("/admin/clock/advance")).send({ days: 29 });
+    t.ctx.clock.advanceDays(29);
     const day29 = await request(t.app).get(`/summary?link=${linkId}`);
     expect(day29.status).toBe(200);
     expect(day29.body.daysLeft).toBe(1);
 
-    await t.provider(request(t.app).post("/admin/clock/advance")).send({ days: 1 });
+    t.ctx.clock.advanceDays(1);
     const day30 = await request(t.app).get(`/summary?link=${linkId}`);
     expect(day30.status).toBe(410);
     expect(day30.body.error).toBe("link_expired");
@@ -43,10 +43,9 @@ describe("30-day expiry at read time and the purge job", () => {
     const keptCiphertext = docsBefore.find((d) => d.sk === "simplified")!;
     const keptKey = Buffer.from(before!.encKey!);
 
-    const res = await t.provider(request(t.app).post("/admin/purge"));
-    expect(res.status).toBe(200);
-    expect(res.body.linksPurged).toBe(1);
-    expect(res.body.documentsDeleted).toBe(3);
+    const report = await t.ctx.purge();
+    expect(report.linksPurged).toBe(1);
+    expect(report.documentsDeleted).toBe(3);
 
     const after = await t.ctx.links.getByHash(hash);
     expect(after?.status).toBe("purged");
@@ -71,9 +70,22 @@ describe("30-day expiry at read time and the purge job", () => {
 
   it("purge is idempotent and leaves unexpired links alone", async () => {
     const fresh = await ingestText(t, exampleText("example-3-hfpef-cellulitis"));
-    const res = await t.provider(request(t.app).post("/admin/purge"));
-    expect(res.body.linksPurged).toBe(0);
+    const report = await t.ctx.purge();
+    expect(report.linksPurged).toBe(0);
     const ok = await request(t.app).get(`/summary?link=${fresh.linkId}`);
     expect(ok.status).toBe(200);
+  });
+
+  it("DEMO_NOW pins the app clock at boot, so a second process can sweep 'day 30' against the same stores", async () => {
+    const pinned = await createTestApp({ env: { DEMO_NOW: "2026-11-15T12:00:00.000Z" } });
+    try {
+      const health = await request(pinned.app).get("/health");
+      expect(Math.abs(new Date(health.body.clock.now).getTime() - Date.parse("2026-11-15T12:00:00.000Z"))).toBeLessThan(5000);
+      expect(health.body.clock.demoNow).toBe("2026-11-15T12:00:00.000Z");
+      const { expiresAt } = await ingestText(pinned, exampleText("example-1-chf"));
+      expect(expiresAt.slice(0, 10)).toBe("2026-12-15");
+    } finally {
+      await pinned.close();
+    }
   });
 });

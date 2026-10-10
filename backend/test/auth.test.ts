@@ -43,12 +43,14 @@ describe("provider auth, health and the public surface", () => {
   });
 
   it("surfaces outside the note and the diagram are gone", async () => {
-    for (const path of ["/languages", "/checklist?link=AAAAAAAAAAAAAAAAAAAAAA"]) {
-      const res = await request(t.app).get(path);
+    for (const path of ["/languages", "/checklist?link=AAAAAAAAAAAAAAAAAAAAAA", "/audit?link=AAAAAAAAAAAAAAAAAAAAAA"]) {
+      const res = await t.provider(request(t.app).get(path));
       expect(res.status, path).toBe(404);
     }
-    const post = await request(t.app).post("/checklist/complete").send({});
-    expect(post.status).toBe(404);
+    for (const path of ["/checklist/complete", "/admin/purge", "/admin/clock/advance", "/admin/clock/reset"]) {
+      const res = await t.provider(request(t.app).post(path)).send({ days: 30 });
+      expect(res.status, path).toBe(404);
+    }
   });
 
   it("serves the OpenAPI document", async () => {

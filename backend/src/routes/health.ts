@@ -7,7 +7,7 @@ export function healthRouter(ctx: AppContext): Router {
     res.json({
       ok: true,
       service: "dischargeai-backend",
-      clock: { now: ctx.clock.nowIso(), offsetDays: ctx.clock.offsetDays },
+      clock: { now: ctx.clock.nowIso(), offsetDays: ctx.clock.offsetDays, demoNow: ctx.clock.demoNow },
       linkTtlDays: ctx.linkTtlDays,
       providers: {
         llm: ctx.simplifier.name,

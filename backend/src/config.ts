@@ -33,7 +33,8 @@ export const ConfigSchema = z.object({
   LOG_LEVEL: z.string().default("info"),
   PATIENT_APP_URL: z.string().default("http://localhost:5173"),
   PROVIDER_API_KEY: z.string().min(1).default("dev-provider-key"),
-  DEMO_MODE: bool.default(true),
+  /** Pins the app clock to this ISO-8601 moment at boot (demo of day 30). Unset in production. */
+  DEMO_NOW: optionalString,
   PURGE_INTERVAL_MS: int(60_000),
   MAX_UPLOAD_BYTES: int(15 * 1024 * 1024),
 

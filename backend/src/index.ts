@@ -16,7 +16,7 @@ const server = app.listen(ctx.config.PORT, ctx.config.HOST, () => {
       speech: ctx.speechToText.name,
       docStore: ctx.docStore.name,
       email: ctx.mailer.transportName,
-      demoMode: ctx.config.DEMO_MODE,
+      demoNow: ctx.clock.demoNow,
       purgeIntervalMs: ctx.config.PURGE_INTERVAL_MS,
     },
     `DischargeAI backend listening on http://${ctx.config.HOST}:${ctx.config.PORT} (docs at /docs)`,
