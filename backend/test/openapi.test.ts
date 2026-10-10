@@ -20,7 +20,24 @@ const SURFACE: Record<string, string[]> = {
   "/p/{token}": ["get"],
   "/llm-sumary": ["get"],
   "/llm-summary": ["get"],
+  "/translation": ["get"],
 };
+
+/** Every route Express actually mounts, read from the router stack (Express 5), as OpenAPI-style paths. */
+function mountedRoutes(app: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const walk = (stack: { route?: { path: string; methods: Record<string, boolean> }; handle?: { stack?: unknown[] } }[]) => {
+    for (const layer of stack) {
+      if (layer.route) {
+        const path = layer.route.path.replace(/:([A-Za-z]+)/g, "{$1}");
+        out[path] = [...new Set([...(out[path] ?? []), ...Object.keys(layer.route.methods)])].sort();
+      } else if (layer.handle?.stack) walk(layer.handle.stack as typeof stack);
+    }
+  };
+  walk((app as { router: { stack: Parameters<typeof walk>[0] } }).router.stack);
+  delete out["/openapi.json"];
+  return out;
+}
 
 describe("OpenAPI document", () => {
   let t: TestApp;
@@ -33,6 +50,10 @@ describe("OpenAPI document", () => {
   it("documents exactly the mounted routes and methods", () => {
     const documented = Object.fromEntries(Object.entries(doc.paths).map(([p, ops]) => [p, Object.keys(ops).filter((k) => ["get", "post", "put", "patch", "delete"].includes(k)).sort()]));
     expect(documented).toEqual(SURFACE);
+  });
+
+  it("every route the app mounts is documented, and nothing undocumented is mounted", () => {
+    expect(mountedRoutes(t.app)).toEqual(SURFACE);
   });
 
   it("every documented route answers (no 404 from the router)", async () => {

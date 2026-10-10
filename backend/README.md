@@ -132,6 +132,30 @@ While the LLM is still working the route answers `425 processing`; with the offl
 
 Checked on 2026-10-10 against `npm run dev` on this commit: 200 with the summary, identical bodies on both spellings, 404, 400, and 410 after the restart 31 days ahead. Checked live the same day: `GET /llm-sumary` on the task 3 live server returned the summary Bedrock wrote, read from the `discharge-summaries` item.
 
+### Task 5: `GET /translation?lang=&sum_id=`
+
+Use a fresh `sumId` from task 3 (ingested with `"language":"es"`):
+
+```sh
+# Spanish was produced at ingest because the provider picked it: "fromCache":true
+curl -s "http://localhost:4000/translation?lang=es&sum_id=<sumId>"
+
+# Mandarin is not on the item yet: the agent translates the llm-summary, the result is saved, "fromCache":false
+curl -s "http://localhost:4000/translation?lang=zh&sum_id=<sumId>"
+
+# Ask again (a language name works too): served from the item, "fromCache":true, availableLanguages ["en","es","zh"]
+curl -s "http://localhost:4000/translation?lang=Mandarin&sum_id=<sumId>"
+
+# No lang: 400; a language it cannot resolve: 400; an id nobody issued: 404
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?sum_id=<sumId>"
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?lang=klingon&sum_id=<sumId>"
+curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?lang=es&sum_id=AAAAAAAAAAAAAAAAAAAAAA"
+```
+
+With the default offline provider the cache behaves exactly as above, but the words are a stand-in: Spanish comes from a small phrase dictionary (so some English remains), and other languages come back in English marked `[zh]` and so on. Example 1 in `fixtures/` has full Spanish, Mandarin and Arabic fixtures. Real translations need `LLM_PROVIDER=bedrock`.
+
+Checked on 2026-10-10 against `npm run dev` on this commit: Spanish `fromCache: true`, Mandarin `false` then `true`, `availableLanguages` `["en", "es", "zh"]`, 400, 400, 404. Checked live the same day on `us.anthropic.claude-sonnet-4-6` against the task 3 item: the first Mandarin request translated in 3.6 s (`fromCache: false`, "开始每天口服一次 Furosemide 40 mg。", name and dose verbatim), the second came from the item in 73 ms (`fromCache: true`), and boto3 showed `translations` on the `discharge-summaries` item holding `es` and `zh`. The two live test items and the test PDF were then deleted from `discharge-summaries` and `emrpdf-rh` by key and confirmed gone.
+
 ## The demo (what the judge sees)
 
 `npm run demo` runs `scripts/demo.sh` against the server started with `npm run dev`:
@@ -145,7 +169,7 @@ Checked on 2026-10-10 against `npm run dev` on this commit: 200 with the summary
 7. `GET /translation?lang=zh&sum_id=` runs the translation agent once (`fromCache: false`); the second call is served from the item (`fromCache: true`). Medication names and doses are identical in every language.
 8. `GET /p/:token?language=es` serves the same summary on the diagram's patient route.
 9. `POST /synthesize { text, language: "ar" }` runs the AI pipeline directly and returns the JSON per language plus the safety result, storing nothing.
-10. Day 30: `DEMO_NOW=<31 days ahead> npm run sweep` runs the purge against the same stores: the summary item is deleted (and the PDF or audio object when there is one), one deletion receipt each.
+10. Day 30: `DEMO_NOW=<31 days ahead> npm run sweep` runs the purge against the same stores: the summary item is deleted (and the PDF or audio object when there is one), one deletion receipt each. With the clock shifted, the purge refuses to touch DynamoDB or S3 (it would delete teammates' recent data in the shared table), so run the demo on local stores; on the team account it stops at this step with that message.
 11. `GET /llm-sumary`, `GET /translation` and `GET /p/:token` answer `410 link_purged`.
 12. `npm run show-audit -- --receipts` and `npm run show-audit -- --link <sumId>` print the receipts and the summary's audit trail; no PHI appears in either.
 
@@ -248,6 +272,7 @@ Copy `.env.example` to `.env`. Everything has a local default.
 | `PROVIDER_API_KEY` | `dev-provider-key` | the `x-provider-key` value |
 | `DEMO_NOW` | unset | pins the app clock to an ISO moment at boot (day-30 demos); never in production |
 | `PURGE_INTERVAL_MS` | `60000` | purge timer; `0` disables it (`npm run sweep` runs it once) |
+| `DEMO_PURGE_ON_AWS` | `no` | with `DEMO_NOW` set, the purge refuses to run against DynamoDB or S3; `yes` allows it on a throwaway account only |
 | `SECRETS_BOOTSTRAP`, `AWS_SECRET_ARN`, `AWS_REGION` | `auto`, the team ARN, `us-west-2` | read the secret at boot when credentials resolve; `off` never calls AWS |
 | `DATABASE_URL` | unset | `sqlite:<file>` or `mysql://user:password@host:3306/db`; wins over everything |
 | `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_POOL_SIZE` | from the secret, `dischargeai`, `5` | MariaDB; used when `DATABASE_URL` is unset and a host is known |
@@ -293,7 +318,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test`: 101 passing of 101, 17 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation with Spanish, Mandarin and Arabic, a refused translation, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
+`npm test`: 108 passing of 108, 18 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), on Node 24.21.0 and Node 22.22.0. Coverage: patients and the nine contract keys, provider auth and the surface, JSON ingest of text and base64 PDF, the 400 on a bad `type`, multipart ingest of text, PDF and audio, the `activeLinks` row, the DynamoDB item with `sum-id` and `llm-summary`, the email to the patient and the caregiver, needs_review on a dropped medication, cache-first translation on `GET /translation` (miss, then hit by code and by name, the agent given exactly the `llm-summary`, the result saved under `translations[lang]`) and on the earlier `/translate` with Spanish, Mandarin and Arabic, a refused translation that is not cached, `GET /llm-sumary` found, aliases, 400, 404, 425 and 410, every mounted route documented in OpenAPI, the DEMO_NOW purge refusing AWS stores, `GET /p/:token`, `POST /synthesize` in both modes, read-time 410, purge with receipts and object deletion, DEMO_NOW, the SQL dialect rewrites and `DATABASE_URL` parsing, the Secrets Manager bootstrap with an injected fetcher, the DynamoDB store on a fake table, the S3 store on a fake bucket, the lifecycle merge, the stream and S3 event handlers, the safety checks on all five examples, the contract and fixtures, and the OpenAPI document against the mounted routes.
 
 ## Limitations
 

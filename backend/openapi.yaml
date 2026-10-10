@@ -163,6 +163,18 @@ components:
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         daysLeft: { type: integer }
+    TranslationView:
+      type: object
+      required: ["sum-id", lang, fromCache, translation, availableLanguages, expiresAt, daysLeft]
+      properties:
+        "sum-id": { type: string }
+        sumId: { type: string, description: The same value as sum-id }
+        lang: { type: string, description: The resolved BCP-47 code }
+        fromCache: { type: boolean, description: true when the item already held it; false when the agent ran on this request }
+        translation: { $ref: "#/components/schemas/AiOutput" }
+        availableLanguages: { type: array, items: { type: string } }
+        expiresAt: { type: string, format: date-time }
+        daysLeft: { type: integer }
     PatientView:
       description: What GET /summary, GET /p/{token} and GET /translate return. The fixed JSON plus the expiry facts.
       allOf:
@@ -456,10 +468,36 @@ paths:
         "410": { description: link_expired or link_purged }
         "423": { description: needs_review }
         "425": { description: processing }
+  /translation:
+    get:
+      tags: [patient]
+      summary: "Task 5 of the backend tasks doc: the summary in another language, cache-first on the DynamoDB item"
+      description: |
+        1. Checks the item's translations map for the language (or its base language, es-MX -> es) and returns it (fromCache true).
+        2. Otherwise reads the llm-summary (the same path as GET /llm-sumary), sends it to the translation agent with the
+           language, waits, checks that every medication name, dose and number came through unchanged, saves the result
+           under translations[lang] on the same item, and returns it (fromCache false). A translation that fails the
+           check answers 422 and is not saved. lang=en returns the llm-summary.
+      parameters:
+        - name: lang
+          in: query
+          required: true
+          schema: { type: string }
+          description: BCP-47 code or language name, e.g. es, Spanish, zh, Mandarin, ar
+        - $ref: "#/components/parameters/sumIdUnderscore"
+      responses:
+        "200": { description: The translation, content: { application/json: { schema: { $ref: "#/components/schemas/TranslationView" } } } }
+        "400": { description: "missing_language, invalid_language, missing_sum_id or invalid_link", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: link_not_found }
+        "410": { description: link_expired (checked at read time, before any purge) or link_purged }
+        "422": { description: translation_rejected (a name, dose or number changed; nothing saved) }
+        "423": { description: needs_review }
+        "425": { description: processing }
+        "502": { description: translation_failed (the translation agent is unavailable; the English summary is still available) }
   /summary:
     get:
       tags: [patient]
-      summary: The LLM response for the link, read from the document store, with the expiry stated upfront
+      summary: "Earlier spelling of task 4 (?link=), with an optional language; returns the per-language JSON at the top level"
       parameters:
         - $ref: "#/components/parameters/link"
         - $ref: "#/components/parameters/language"
@@ -475,7 +513,7 @@ paths:
   /translate:
     get:
       tags: [patient]
-      summary: Translate on demand (cache-first in the document store; the translation agent runs on a miss and the result is cached)
+      summary: "Earlier spelling of task 5 (?link=&language=), same cache-first handler; returns the per-language JSON at the top level"
       parameters:
         - $ref: "#/components/parameters/link"
         - name: language
