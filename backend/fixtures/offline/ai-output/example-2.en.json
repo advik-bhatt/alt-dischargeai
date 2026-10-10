@@ -1,0 +1,137 @@
+{
+  "language": "en",
+  "steps": [
+    {
+      "id": "med-1",
+      "text": "Take Cefpodoxime 200 mg twice a day until it is gone (next 7 days)"
+    },
+    {
+      "id": "med-2",
+      "text": "Take Tamsulosin 0.4 mg once a day while the stent is in"
+    },
+    {
+      "id": "med-3",
+      "text": "Keep lisinopril on hold until your doctor says otherwise"
+    },
+    {
+      "id": "appt-1",
+      "text": "See urology to plan stone treatment and stent removal. The stent cannot stay in forever (as scheduled)"
+    },
+    {
+      "id": "lab-1",
+      "text": "Get your kidney function rechecked as directed"
+    },
+    {
+      "id": "vital-1",
+      "text": "Check your blood sugar as your diabetes plan says"
+    },
+    {
+      "id": "life-1",
+      "text": "Drink plenty of water unless a doctor told you to limit fluids"
+    }
+  ],
+  "medications": [
+    {
+      "name": "Cefpodoxime",
+      "dose": "200 mg",
+      "howOften": "twice a day by mouth for 7 more days",
+      "status": "new",
+      "why": "An antibiotic to finish treating the infection. Take every dose even if you feel better."
+    },
+    {
+      "name": "Tamsulosin",
+      "dose": "0.4 mg",
+      "howOften": "once a day by mouth while the stent is in place",
+      "status": "new",
+      "why": "Relaxes the urine tube so the stent is more comfortable. Keep taking it unless urology tells you to stop."
+    },
+    {
+      "name": "Acetaminophen",
+      "dose": "",
+      "howOften": "as needed for mild pain or fever, within the daily limit your care team gave you",
+      "status": "new",
+      "why": "For mild pain or fever."
+    },
+    {
+      "name": "Amlodipine",
+      "dose": "5 mg",
+      "howOften": "once a day",
+      "status": "continue",
+      "why": "Keeps your blood pressure down."
+    },
+    {
+      "name": "Atorvastatin",
+      "dose": "20 mg",
+      "howOften": "every night",
+      "status": "continue",
+      "why": "Lowers cholesterol to protect your heart."
+    },
+    {
+      "name": "Home diabetes medications",
+      "dose": "",
+      "howOften": "as on your final medication list",
+      "status": "continue",
+      "why": "Controls your blood sugar."
+    },
+    {
+      "name": "Lisinopril",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "On hold until your doctor rechecks your kidneys and blood pressure. Do not restart it on your own."
+    },
+    {
+      "name": "NSAIDs",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "Avoid pain relievers like ibuprofen. They can hurt your kidneys after this illness. Ask first."
+    }
+  ],
+  "followUps": [
+    {
+      "who": "Urology",
+      "when": "as scheduled",
+      "why": "Treat the stone and remove or exchange the stent"
+    },
+    {
+      "who": "Primary care doctor",
+      "when": "as directed",
+      "why": "Recheck your kidney function and blood pressure, and decide about lisinopril"
+    }
+  ],
+  "warnings": [
+    {
+      "text": "Confusion, fainting, severe weakness, or trouble breathing",
+      "tier": "call911"
+    },
+    {
+      "text": "Fever or shaking chills",
+      "tier": "er"
+    },
+    {
+      "text": "Worsening pain in your side or belly",
+      "tier": "er"
+    },
+    {
+      "text": "Vomiting that will not stop or you cannot keep your medicines down",
+      "tier": "er"
+    },
+    {
+      "text": "Making much less urine than usual",
+      "tier": "er"
+    },
+    {
+      "text": "Signs the blockage or infection is back",
+      "tier": "er"
+    },
+    {
+      "text": "Questions about stent symptoms such as a frequent urge to urinate or mild discomfort",
+      "tier": "clinic"
+    },
+    {
+      "text": "Problems getting your prescriptions filled",
+      "tier": "clinic"
+    }
+  ]
+}

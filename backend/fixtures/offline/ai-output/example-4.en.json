@@ -1,0 +1,166 @@
+{
+  "language": "en",
+  "steps": [
+    {
+      "id": "med-1",
+      "text": "Take Prednisone 40 mg once a day for 2 more days (next 2 days)"
+    },
+    {
+      "id": "med-2",
+      "text": "Take Doxycycline 100 mg twice a day for 3 more days (next 3 days)"
+    },
+    {
+      "id": "med-3",
+      "text": "Take Furosemide 40 mg once a day (the new, higher dose)"
+    },
+    {
+      "id": "med-4",
+      "text": "Use your maintenance inhaler every day; use the rescue inhaler only when breathing gets hard"
+    },
+    {
+      "id": "vital-1",
+      "text": "Weigh yourself every day and write it down"
+    },
+    {
+      "id": "life-1",
+      "text": "Use your home oxygen at the flow rate and times you were prescribed"
+    },
+    {
+      "id": "life-2",
+      "text": "Eat a low-salt diet"
+    },
+    {
+      "id": "life-3",
+      "text": "Stop smoking. Ask your care team for help and resources"
+    },
+    {
+      "id": "appt-1",
+      "text": "See your primary care doctor (as arranged)"
+    },
+    {
+      "id": "appt-2",
+      "text": "See your lung doctor (pulmonology) (as arranged)"
+    },
+    {
+      "id": "appt-3",
+      "text": "See your heart doctor (cardiology) (as arranged)"
+    }
+  ],
+  "medications": [
+    {
+      "name": "Prednisone",
+      "dose": "40 mg",
+      "howOften": "once a day by mouth for 2 more days",
+      "status": "new",
+      "why": "A steroid pill that calms the swelling in your lungs. Take both remaining days."
+    },
+    {
+      "name": "Doxycycline",
+      "dose": "100 mg",
+      "howOften": "twice a day by mouth for 3 more days",
+      "status": "new",
+      "why": "An antibiotic to finish treating the pneumonia. Take every dose."
+    },
+    {
+      "name": "Furosemide",
+      "dose": "40 mg",
+      "howOften": "once a day by mouth",
+      "status": "new",
+      "why": "Your water pill at a higher dose than before. It takes extra fluid off so you breathe easier. You will urinate more."
+    },
+    {
+      "name": "Maintenance inhaler",
+      "dose": "",
+      "howOften": "every day as prescribed",
+      "status": "continue",
+      "why": "Keeps your airways open. Use it every day even when you feel fine."
+    },
+    {
+      "name": "Rescue albuterol inhaler",
+      "dose": "",
+      "howOften": "as needed when breathing gets hard",
+      "status": "continue",
+      "why": "Opens your airways fast during a bad spell."
+    },
+    {
+      "name": "Carvedilol",
+      "dose": "",
+      "howOften": "at the dose on your discharge list",
+      "status": "continue",
+      "why": "Helps your heart and blood pressure."
+    },
+    {
+      "name": "Previous lower-dose furosemide regimen",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "Stopped. The new 40 mg dose replaces it. Do not take both."
+    },
+    {
+      "name": "Any duplicate inhaler therapy",
+      "dose": "",
+      "howOften": "",
+      "status": "stop",
+      "why": "Stopped. Use only the inhalers on your final medication list so you do not double up."
+    }
+  ],
+  "followUps": [
+    {
+      "who": "Primary care doctor",
+      "when": "as arranged",
+      "why": "Check your recovery and your medicines"
+    },
+    {
+      "who": "Pulmonology (lung doctor)",
+      "when": "as arranged",
+      "why": "Check your COPD plan, inhalers and oxygen"
+    },
+    {
+      "who": "Cardiology (heart doctor)",
+      "when": "as arranged",
+      "why": "Check your heart failure and the furosemide dose"
+    }
+  ],
+  "warnings": [
+    {
+      "text": "Severe shortness of breath that your rescue inhaler does not help",
+      "tier": "call911"
+    },
+    {
+      "text": "Blue or gray lips, or you cannot speak because you are so breathless",
+      "tier": "call911"
+    },
+    {
+      "text": "New confusion or you cannot stay awake",
+      "tier": "call911"
+    },
+    {
+      "text": "New or worsening chest pain",
+      "tier": "call911"
+    },
+    {
+      "text": "You need much more oxygen than usual",
+      "tier": "er"
+    },
+    {
+      "text": "High fever or a cough that quickly gets worse with more phlegm",
+      "tier": "er"
+    },
+    {
+      "text": "Fast weight gain with more swelling or trouble breathing when lying flat",
+      "tier": "er"
+    },
+    {
+      "text": "You are using the rescue inhaler more than usual",
+      "tier": "clinic"
+    },
+    {
+      "text": "You are not sure which inhaler to use or how to use it",
+      "tier": "clinic"
+    },
+    {
+      "text": "You want help quitting smoking",
+      "tier": "clinic"
+    }
+  ]
+}
