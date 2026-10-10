@@ -1,0 +1,76 @@
+{
+  "readingLevel": "grade5",
+  "language": "en",
+  "summary": "You were in the hospital because your heart was holding on to extra fluid. Your heartbeat was fast, and you had a skin infection on your right leg. Your water pill changed from furosemide to torsemide, and your metoprolol is now a once-a-day kind. Weigh yourself every day and finish the antibiotic. Never take both water pills.",
+  "diagnoses": [
+    { "plain": "Heart failure where the heart is stiff and holds on to fluid", "clinical": "Acute on chronic diastolic heart failure" },
+    { "plain": "Fast, irregular heartbeat, now controlled", "clinical": "Atrial fibrillation with rapid ventricular response, resolved" },
+    { "plain": "Skin infection on the right lower leg", "clinical": "Right lower-extremity cellulitis" },
+    { "plain": "High blood pressure", "clinical": "Hypertension" },
+    { "plain": "Long-term kidney disease, moderate stage", "clinical": "Chronic kidney disease stage 3" },
+    { "plain": "Diabetes (high blood sugar)", "clinical": "Type 2 diabetes" },
+    { "plain": "Long-term leg swelling", "clinical": "Chronic lower-extremity edema" }
+  ],
+  "medications": {
+    "new": [
+      { "name": "Torsemide", "dose": "20 mg", "howOften": "once a day by mouth", "why": "Your new water pill. It replaces furosemide and takes extra fluid off. You will urinate more." },
+      { "name": "Metoprolol succinate", "dose": "75 mg", "howOften": "once a day", "why": "A long-acting version that keeps your heart rate steady. It replaces the old short-acting metoprolol." },
+      { "name": "Cephalexin", "dose": "500 mg", "howOften": "four times a day for 4 more days", "why": "An antibiotic to finish treating the leg infection. Take every dose." },
+      { "name": "Empagliflozin", "dose": "10 mg", "howOften": "once a day", "why": "Helps your heart failure." }
+    ],
+    "continue": [
+      { "name": "Apixaban", "dose": "5 mg", "howOften": "twice a day, as on your final medication list", "why": "A blood thinner that prevents strokes from the irregular heartbeat. Never stop it without asking your doctor." },
+      { "name": "Amlodipine", "dose": "", "howOften": "as instructed", "why": "Keeps your blood pressure down." },
+      { "name": "Atorvastatin", "dose": "", "howOften": "every night", "why": "Lowers cholesterol to protect your heart." },
+      { "name": "Home diabetes regimen", "dose": "", "howOften": "as on your final medication list", "why": "Controls your blood sugar." }
+    ],
+    "stop": [
+      { "name": "Furosemide", "why": "Stopped. Torsemide replaces it. Do not take both water pills." },
+      { "name": "Previous short-acting metoprolol regimen", "why": "Stopped. The new once-a-day metoprolol succinate replaces it." }
+    ]
+  },
+  "checklist": [
+    { "id": "med-1", "type": "med", "text": "Take Torsemide 20 mg once a day. Do not take furosemide anymore", "due": "every day" },
+    { "id": "med-2", "type": "med", "text": "Take Metoprolol succinate 75 mg once a day. Do not take the old metoprolol", "due": "every day" },
+    { "id": "med-3", "type": "med", "text": "Take Cephalexin 500 mg four times a day until it is gone", "due": "next 4 days" },
+    { "id": "med-4", "type": "med", "text": "Take Empagliflozin 10 mg once a day", "due": "every day" },
+    { "id": "med-5", "type": "med", "text": "Take Apixaban 5 mg twice a day, every day", "due": "every day" },
+    { "id": "vital-1", "type": "vital", "text": "Weigh yourself every day and write it down", "due": "every morning" },
+    { "id": "vital-2", "type": "vital", "text": "Look at your right leg every day: redness, warmth and swelling should be shrinking", "due": "every day" },
+    { "id": "lab-1", "type": "lab", "text": "Get your kidney and electrolyte blood tests as ordered after the water pill change", "due": "as ordered" },
+    { "id": "appt-1", "type": "appointment", "text": "See your heart doctor (cardiology)", "due": "as arranged" },
+    { "id": "appt-2", "type": "appointment", "text": "See your primary care doctor", "due": "as arranged" },
+    { "id": "life-1", "type": "lifestyle", "text": "Eat a low-salt diet", "due": "every day" },
+    { "id": "life-2", "type": "lifestyle", "text": "Put your right leg up when resting", "due": "every day" }
+  ],
+  "returnPrecautions": {
+    "call911": [
+      "New chest pain",
+      "Severe or quickly worsening shortness of breath",
+      "Fainting or nearly fainting",
+      "New confusion or severe weakness"
+    ],
+    "goToER": [
+      "A fast or irregular heartbeat that does not settle and makes you feel unwell",
+      "Swelling or weight going up quickly",
+      "The leg redness spreading past the marked line, or the pain getting much worse fast",
+      "New fever or chills",
+      "Heavy bleeding while on the blood thinner"
+    ],
+    "callClinic": [
+      "Dizziness or blood pressure changes, so we can check your fall risk",
+      "Any new drainage from the leg"
+    ]
+  },
+  "followUps": [
+    { "who": "Cardiology (heart doctor)", "when": "as arranged", "why": "Check your heart rate, fluid and the new medicines" },
+    { "who": "Primary care doctor", "when": "as arranged", "why": "Check the leg infection and your blood tests" }
+  ],
+  "questionsToAsk": [
+    "How much weight gain should make me call you?",
+    "What should I do if I accidentally take furosemide and torsemide on the same day?",
+    "When will the leg redness be fully gone?",
+    "Do I need to change my apixaban dose?",
+    "When are my blood tests due?"
+  ]
+}

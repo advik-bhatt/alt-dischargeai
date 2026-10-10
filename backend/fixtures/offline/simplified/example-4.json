@@ -1,0 +1,72 @@
+{
+  "readingLevel": "grade5",
+  "language": "en",
+  "summary": "You were in the hospital because your lung disease flared up and you had pneumonia. Your heart was also holding on to extra fluid, so it was hard to breathe. You are going home with steroid pills, an antibiotic, and a higher dose of your water pill. Finish the prednisone and the doxycycline. Use your inhalers the right way and weigh yourself every day.",
+  "diagnoses": [
+    { "plain": "A flare-up of your long-term lung disease (COPD)", "clinical": "COPD exacerbation" },
+    { "plain": "Lung infection (pneumonia)", "clinical": "Community-acquired pneumonia" },
+    { "plain": "Weak heart that held on to extra fluid (heart failure)", "clinical": "Acute on chronic systolic heart failure" },
+    { "plain": "Low oxygen that needed extra oxygen, now better", "clinical": "Acute hypoxic respiratory failure, resolved" },
+    { "plain": "High blood pressure", "clinical": "Hypertension" },
+    { "plain": "Smoking", "clinical": "Tobacco use disorder" }
+  ],
+  "medications": {
+    "new": [
+      { "name": "Prednisone", "dose": "40 mg", "howOften": "once a day by mouth for 2 more days", "why": "A steroid pill that calms the swelling in your lungs. Take both remaining days." },
+      { "name": "Doxycycline", "dose": "100 mg", "howOften": "twice a day by mouth for 3 more days", "why": "An antibiotic to finish treating the pneumonia. Take every dose." },
+      { "name": "Furosemide", "dose": "40 mg", "howOften": "once a day by mouth", "why": "Your water pill at a higher dose than before. It takes extra fluid off so you breathe easier. You will urinate more." }
+    ],
+    "continue": [
+      { "name": "Maintenance inhaler", "dose": "", "howOften": "every day as prescribed", "why": "Keeps your airways open. Use it every day even when you feel fine." },
+      { "name": "Rescue albuterol inhaler", "dose": "", "howOften": "as needed when breathing gets hard", "why": "Opens your airways fast during a bad spell." },
+      { "name": "Carvedilol", "dose": "", "howOften": "at the dose on your discharge list", "why": "Helps your heart and blood pressure." }
+    ],
+    "stop": [
+      { "name": "Previous lower-dose furosemide regimen", "why": "Stopped. The new 40 mg dose replaces it. Do not take both." },
+      { "name": "Any duplicate inhaler therapy", "why": "Stopped. Use only the inhalers on your final medication list so you do not double up." }
+    ]
+  },
+  "checklist": [
+    { "id": "med-1", "type": "med", "text": "Take Prednisone 40 mg once a day for 2 more days", "due": "next 2 days" },
+    { "id": "med-2", "type": "med", "text": "Take Doxycycline 100 mg twice a day for 3 more days", "due": "next 3 days" },
+    { "id": "med-3", "type": "med", "text": "Take Furosemide 40 mg once a day (the new, higher dose)", "due": "every day" },
+    { "id": "med-4", "type": "med", "text": "Use your maintenance inhaler every day; use the rescue inhaler only when breathing gets hard", "due": "every day" },
+    { "id": "vital-1", "type": "vital", "text": "Weigh yourself every day and write it down", "due": "every morning" },
+    { "id": "life-1", "type": "lifestyle", "text": "Use your home oxygen at the flow rate and times you were prescribed", "due": "every day" },
+    { "id": "life-2", "type": "lifestyle", "text": "Eat a low-salt diet", "due": "every day" },
+    { "id": "life-3", "type": "lifestyle", "text": "Stop smoking. Ask your care team for help and resources", "due": "starting now" },
+    { "id": "appt-1", "type": "appointment", "text": "See your primary care doctor", "due": "as arranged" },
+    { "id": "appt-2", "type": "appointment", "text": "See your lung doctor (pulmonology)", "due": "as arranged" },
+    { "id": "appt-3", "type": "appointment", "text": "See your heart doctor (cardiology)", "due": "as arranged" }
+  ],
+  "returnPrecautions": {
+    "call911": [
+      "Severe shortness of breath that your rescue inhaler does not help",
+      "Blue or gray lips, or you cannot speak because you are so breathless",
+      "New confusion or you cannot stay awake",
+      "New or worsening chest pain"
+    ],
+    "goToER": [
+      "You need much more oxygen than usual",
+      "High fever or a cough that quickly gets worse with more phlegm",
+      "Fast weight gain with more swelling or trouble breathing when lying flat"
+    ],
+    "callClinic": [
+      "You are using the rescue inhaler more than usual",
+      "You are not sure which inhaler to use or how to use it",
+      "You want help quitting smoking"
+    ]
+  },
+  "followUps": [
+    { "who": "Primary care doctor", "when": "as arranged", "why": "Check your recovery and your medicines" },
+    { "who": "Pulmonology (lung doctor)", "when": "as arranged", "why": "Check your COPD plan, inhalers and oxygen" },
+    { "who": "Cardiology (heart doctor)", "when": "as arranged", "why": "Check your heart failure and the furosemide dose" }
+  ],
+  "questionsToAsk": [
+    "Can you watch me use my inhalers to make sure I am doing it right?",
+    "What oxygen flow rate should I use, and when?",
+    "How much weight gain should make me call you?",
+    "What programs can help me quit smoking?",
+    "What should I do if I run out of prednisone or doxycycline early?"
+  ]
+}

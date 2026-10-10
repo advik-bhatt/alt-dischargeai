@@ -1,0 +1,92 @@
+Example 1 — Acute Decompensated HFrEF
+With Pneumonia and Acute Kidney Injury
+Patient: 72-year-old man
+Admission diagnosis: Acute hypoxic respiratory failure due to acute on chronic
+systolic heart failure and community-acquired pneumonia
+Discharge diagnoses:
+• Acute on chronic HFrEF, EF 30%
+• Community-acquired right lower lobe pneumonia
+• Acute kidney injury, improved
+• Hypertension
+• Type 2 diabetes mellitus
+• Chronic atrial fibrillation
+• Chronic anemia
+Hospital Course
+The patient presented with 5 days of progressive dyspnea, orthopnea, bilateral lower-
+extremity edema, and productive cough. On arrival, oxygen saturation was 84% on
+room air. Chest radiograph demonstrated pulmonary vascular congestion with a right
+lower lobe infiltrate. BNP was elevated, and echocardiogram demonstrated LVEF
+approximately 30%, decreased from 40% on prior study.
+He was treated with IV loop diuretics with improvement in respiratory status and
+peripheral edema. He initially required supplemental oxygen but was weaned to room
+air prior to discharge. He was also treated for presumed community-acquired
+pneumonia with ceftriaxone and azithromycin, with clinical improvement. Blood
+cultures remained negative. Sputum culture grew normal respiratory flora.
+Creatinine increased from 1.2 to 1.6 mg/dL during diuresis and subsequently
+improved to 1.3 mg/dL prior to discharge. Guideline-directed heart failure therapy
+was adjusted during admission. ACE inhibitor was held during the acute kidney injury
+and transitioned to a lower-dose ARB at discharge. Beta blocker was continued.
+Mineralocorticoid receptor antagonist was deferred pending repeat renal function and
+potassium testing.
+The patient was clinically euvolemic at discharge and able to ambulate without
+significant dyspnea.
+Discharge Medications
+New medications
+• Furosemide 40 mg by mouth once daily for volume management.
+• Losartan 25 mg by mouth once daily for heart failure and blood pressure
+control.
+• Empagliflozin 10 mg by mouth once daily for heart failure/diabetes
+management.
+• Amoxicillin-clavulanate 875/125 mg by mouth twice daily for 3 additional
+days to complete treatment for pneumonia.
+Continue
+• Metoprolol succinate 50 mg once daily.
+• Apixaban 5 mg twice daily.
+• Atorvastatin 40 mg nightly.
+• Metformin 500 mg twice daily, provided renal function remains stable.
+Stopped/held
+• Lisinopril — discontinued because therapy was changed to losartan.
+• Spironolactone — held pending repeat renal function and potassium.
+• Ibuprofen/other NSAIDs — avoid because of heart failure and recent kidney
+injury.
+Discharge Instructions
+• Follow a low-sodium diet, generally targeting approximately 2 grams of
+sodium daily.
+• Monitor daily weight at approximately the same time each morning.
+• Keep a written record of weight and symptoms.
+• Follow fluid recommendations provided by the heart-failure team.
+• Complete the entire antibiotic course even if feeling better.
+• Avoid NSAIDs unless specifically approved by the treating clinician.
+• Obtain a basic metabolic panel before or at the early outpatient follow-up to
+reassess creatinine and potassium.
+• Follow up with primary care and cardiology within approximately 1 week.
+Return Precautions
+Seek urgent medical attention for:
+• New or worsening shortness of breath, especially at rest.
+• Chest pain or pressure.
+• Fainting or severe dizziness.
+• Rapidly worsening leg or abdominal swelling.
+• Significant decrease in urine output.
+• New confusion or severe weakness.
+• Fever or worsening cough despite antibiotics.
+The patient should contact the heart-failure team promptly for a rapid increase in
+weight or worsening swelling/breathlessness, according to the individualized
+weight-management plan provided at discharge.
+Nursing Discharge Teaching / What Nursing Typically Relays
+Nursing would typically reinforce:
+1. Medication reconciliation: review which medications are new, continued,
+stopped, and temporarily held.
+2. Diuretic teaching: explain that furosemide increases urination and discuss
+timing it earlier in the day when possible.
+3. Daily weights: demonstrate how and when to weigh and what action to take if
+weight rises according to the physician's prescribed threshold.
+4. Heart-failure symptoms: reinforce monitoring for increasing edema,
+orthopnea, shortness of breath, or rapid weight gain.
+5. Antibiotic adherence: emphasize completing the antibiotic course.
+6. Bleeding precautions: because the patient takes apixaban, review signs of
+significant bleeding and the importance of notifying clinicians about new
+medications.
+7. Confirm that the patient understands follow-up appointments and laboratory
+testing.
+8. Use teach-back: ask the patient to explain the medication changes and when
+they would seek medical attention.
