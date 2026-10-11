@@ -6,7 +6,7 @@ import { chromium, type Page } from "playwright";
 import { startLocalServer } from "../../scripts/local-server.js";
 import { LOCAL_AUDIO_TRANSCRIPT, LOCAL_FAILURE_MARKER } from "../../scripts/local/context.js";
 
-test("the original design works through real HTTP for login, text/PDF/audio, both roles, failures and expiry", { timeout: 120_000 }, async () => {
+test("the original design works through real HTTP for login, text/PDF/live dictation, both roles, failures and expiry", { timeout: 120_000 }, async () => {
   const local = await startLocalServer(0);
   let browser;
   const errors: string[] = [];
@@ -96,20 +96,22 @@ test("the original design works through real HTTP for login, text/PDF/audio, bot
     await page.getByLabel("Visit writeup", { exact: true }).fill("");
     await page.getByRole("button", { name: "Start dictation", exact: true }).click();
     await page.getByRole("button", { name: "Stop dictation", exact: true }).waitFor();
-    await page.waitForTimeout(600);
+    await page.waitForFunction(() => (document.querySelector("textarea") as HTMLTextAreaElement)?.value === "Synthetic audio transcript");
+    assert.equal(await page.getByRole("button", { name: "Send writeup", exact: true }).isDisabled(), true);
     await page.getByRole("button", { name: "Stop dictation", exact: true }).click();
-    await page.waitForFunction(() => (document.querySelector("textarea") as HTMLTextAreaElement)?.value.startsWith("Recorded dictation ready."));
+    await page.waitForFunction(() => (document.querySelector("textarea") as HTMLTextAreaElement)?.value.includes("fixed fixture"));
+    await page.getByRole("button", { name: "Send writeup", exact: true }).waitFor({ state: "visible" });
     await page.locator(".patient-nav-item").filter({ hasText: "Jordan Sample" }).click();
     assert.equal(await page.getByLabel("Visit writeup", { exact: true }).inputValue(), "");
     await page.locator(".patient-nav-item").filter({ hasText: "Alex Example" }).click();
-    assert.match(await page.getByLabel("Visit writeup", { exact: true }).inputValue(), /Recorded dictation ready/);
+    assert.equal(await page.getByLabel("Visit writeup", { exact: true }).inputValue(), LOCAL_AUDIO_TRANSCRIPT);
     const audio = await submit();
     const audioItem = (await local.ctx.summaries.get(audio.sumId))!;
     assert.equal(audio.sumId, text.sumId); assert.ok(audioItem["raw-text"]!.includes(notes));
-    assert.ok(audioItem["raw-text"]!.includes(LOCAL_AUDIO_TRANSCRIPT)); assert.ok(await local.ctx.audio.get(audioItem.audioKey!));
+    assert.ok(audioItem["raw-text"]!.includes(LOCAL_AUDIO_TRANSCRIPT)); assert.equal(audioItem.inputKind, "text");
     const audioViewer = await openPlan(audio.link, "Patient");
     await audioViewer.getByRole("button", { name: new RegExp(`Submitted notes:[\\s\\S]*${LOCAL_AUDIO_TRANSCRIPT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).waitFor();
-    assert.equal((await local.ctx.jobs.latestForLink(audio.sumId))?.meta.inputBytes! > 0, true);
+    assert.equal((await local.ctx.jobs.latestForLink(audio.sumId))?.inputKind, "text");
 
     // Unsupported translation must not silently display a hardcoded translated plan.
     await patient.getByRole("button", { name: /English/ }).click();
@@ -122,9 +124,116 @@ test("the original design works through real HTTP for login, text/PDF/audio, bot
     const docs = await context.newPage(); await docs.goto(local.origin + "/api/docs/");
     await docs.locator(".opblock").first().waitFor(); assert.equal(await docs.locator(".opblock").count(), 16);
     local.ctx.clock.advanceDays(31);
-    const report = await local.ctx.purge(); assert.equal(report.linksPurged, 1); assert.equal(report.receipts.length, 3);
+    const report = await local.ctx.purge(); assert.equal(report.linksPurged, 1); assert.equal(report.receipts.length, 2);
     await caregiver.reload();
     await caregiver.getByRole("alert").filter({ hasText: /permanently deleted/ }).waitFor();
     assert.deepEqual(errors, []); assert.deepEqual(externalRequests, [], "Application API requests stay on the local server");
   } finally { await browser?.close(); await local.close(); }
+});
+
+test("read-aloud shows loading, recovers from blocked playback through native controls, and stops cleanly", { timeout: 60_000 }, async () => {
+  const mp3 = readFileSync(join(import.meta.dirname, "../fixtures/synthetic-audio.mp3"));
+  let calls = 0;
+  const local = await startLocalServer(0, { readAloud: { name: "synthetic-audio-test", async synthesize() {
+    calls++; await new Promise(resolve => setTimeout(resolve, 1500)); return mp3;
+  } } });
+  const edge = process.platform === "win32" && existsSync("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe");
+  const browser = await chromium.launch({ ...(edge ? { channel: "msedge" } : {}), headless: true });
+  try {
+    const response = await fetch(local.origin + "/api/ingest", { method: "POST", headers: { "Content-Type": "application/json", "x-provider-key": "local-test-key" }, body: JSON.stringify({ patientID: "7", DOB: "2000-01-01", type: "text", data: "Synthetic audio interface test." }) });
+    assert.equal(response.status, 202); const accepted = await response.json();
+    for (let i = 0; i < 100 && (await local.ctx.jobs.get(accepted.jobId))?.stage !== "done"; i++) await new Promise(resolve => setTimeout(resolve, 50));
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      const original = HTMLMediaElement.prototype.play; let blocked = false;
+      HTMLMediaElement.prototype.play = function () {
+        if (!blocked) { blocked = true; return Promise.reject(new DOMException("User gesture required", "NotAllowedError")); }
+        return original.call(this);
+      };
+    });
+    await page.goto(accepted.link); await page.getByRole("tab", { name: "Patient", exact: true }).click();
+    await page.getByLabel("Confirm your date of birth", { exact: true }).fill("2000-01-01");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const speaker = page.locator(".read-aloud-btn").nth(1); const player = page.locator("audio");
+    assert.equal(await player.isVisible(), false);
+    await speaker.click(); await page.getByRole("status").filter({ hasText: "Preparing audio" }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "Your browser blocked playback" }).waitFor();
+    assert.equal(await player.isVisible(), true);
+    const box = await player.boundingBox(); assert.ok(box);
+    await page.mouse.click(box.x + 25, box.y + box.height / 2);
+    await page.waitForFunction(() => { const audio = document.querySelector("audio")!; return !audio.paused && audio.readyState >= 2 && audio.currentTime > 0.1; });
+    assert.equal(await page.getByRole("alert").filter({ hasText: "Your browser blocked playback" }).count(), 0);
+    assert.equal(calls, 1, "Native Play uses the already generated audio");
+    await speaker.click(); assert.equal(await player.isVisible(), false);
+    assert.equal(await player.evaluate(audio => (audio as HTMLAudioElement).paused), true);
+    await speaker.click(); await page.getByRole("status").filter({ hasText: "Preparing audio" }).waitFor();
+    await speaker.click(); await page.waitForTimeout(1800);
+    assert.equal(await player.isVisible(), false); assert.equal(await player.getAttribute("src"), null);
+  } finally { await browser.close(); await local.close(); }
+});
+
+test("live dictation preserves drafts, recovers from microphone/provider failures and stops on patient changes", { timeout: 90_000 }, async () => {
+  let attempts = 0;
+  const local = await startLocalServer(0, { liveDictation: { name: "synthetic-stream-test", async *transcribe(audio) {
+    const attempt = ++attempts; let frames = 0;
+    for await (const frame of audio) {
+      assert.ok(frame.length > 0 && frame.length % 2 === 0);
+      if (attempt === 1) throw Object.assign(new Error("test provider denial"), { name: "AccessDeniedException" });
+      if (++frames === 1) yield { id: "a", text: "Take four", partial: true };
+      if (frames === 3) yield { id: "a", text: "Take furosemide 40 mg", partial: true };
+    }
+    yield { id: "a", text: "Take furosemide 40 mg once daily.", partial: false };
+    yield { id: "a", text: "Take furosemide 40 mg once daily.", partial: false };
+  } } });
+  const edge = process.platform === "win32" && existsSync("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe");
+  const browser = await chromium.launch({ ...(edge ? { channel: "msedge" } : {}), headless: true,
+    args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
+  try {
+    const context = await browser.newContext({ permissions: ["microphone"] });
+    await context.addInitScript(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const state = window as unknown as { dictationTracks: MediaStreamTrack[]; denyMic: boolean };
+      state.dictationTracks = []; state.denyMic = true;
+      navigator.mediaDevices.getUserMedia = async constraints => {
+        if (state.denyMic) { state.denyMic = false; throw new DOMException("test denial", "NotAllowedError"); }
+        const stream = await original(constraints); state.dictationTracks.push(...stream.getTracks()); return stream;
+      };
+    });
+    const page = await context.newPage(); const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+    await page.goto(local.origin);
+    await page.getByLabel("Email", { exact: true }).fill("rivera@demo.health"); await page.getByLabel("Password", { exact: true }).fill("demo1234");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.getByRole("heading", { name: "Alex Example", exact: true }).waitFor();
+    const input = page.getByLabel("Visit writeup", { exact: true });
+    await input.fill("Existing typed notes.");
+    await page.getByRole("button", { name: "Start dictation", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Microphone access was denied" }).waitFor();
+    assert.equal(await input.inputValue(), "Existing typed notes."); assert.equal(attempts, 0);
+    await page.getByRole("button", { name: "Start dictation", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "transcribe:StartMedicalStreamTranscription" }).waitFor();
+    assert.equal(await input.inputValue(), "Existing typed notes.");
+    await page.getByRole("button", { name: "Start dictation", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("textarea")!.value === "Existing typed notes.\n\nTake furosemide 40 mg");
+    assert.equal(await page.getByRole("button", { name: "Send writeup", exact: true }).isDisabled(), true);
+    await page.getByRole("button", { name: "Stop dictation", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("textarea")!.value === "Existing typed notes.\n\nTake furosemide 40 mg once daily." && !document.querySelector("textarea")!.readOnly);
+    assert.equal(await page.evaluate(() => (window as unknown as { dictationTracks: MediaStreamTrack[] }).dictationTracks.every(track => track.readyState === "ended")), true);
+    await input.fill("Reviewed notes. Follow up in one week.");
+    await page.getByRole("button", { name: "Start dictation", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("textarea")!.value === "Reviewed notes. Follow up in one week.\n\nTake furosemide 40 mg");
+    await page.locator(".patient-nav-item").filter({ hasText: "Jordan Sample" }).click();
+    await page.waitForFunction(() => !document.querySelector("textarea")!.readOnly);
+    assert.equal(await input.inputValue(), "");
+    await page.waitForTimeout(300); assert.equal(await input.inputValue(), "", "Old transcript events cannot modify another patient's draft");
+    assert.equal(await page.evaluate(() => (window as unknown as { dictationTracks: MediaStreamTrack[] }).dictationTracks.every(track => track.readyState === "ended")), true);
+    await page.locator(".patient-nav-item").filter({ hasText: "Alex Example" }).click();
+    assert.equal(await input.inputValue(), "Reviewed notes. Follow up in one week.\n\nTake furosemide 40 mg");
+    await input.fill("Reviewed final dictation text.");
+    const submitted = page.waitForResponse(response => response.url() === local.origin + "/api/ingest" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Send writeup", exact: true }).click();
+    const response = await submitted;
+    assert.equal(response.status(), 202); assert.equal(response.request().postDataJSON().data, "Reviewed final dictation text.");
+    await page.getByText("Plan ready. Open the patient link below.", { exact: true }).waitFor();
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); await local.close(); }
 });

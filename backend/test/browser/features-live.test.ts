@@ -7,7 +7,7 @@ import { adaptSummary } from "../../../frontend/src/planAdapter.js";
 import type { DischargePlan } from "../../../frontend/src/data.js";
 
 // Opt-in: real provider calls, synthetic data only. Start npm run local:ai first.
-test("live browser: registration, 30-day append, microphone HealthScribe, translated plans and ElevenLabs playback", { timeout: 40 * 60_000 }, async () => {
+test("live browser: registration, 30-day append, streaming microphone dictation, translated plans and ElevenLabs playback", { timeout: 40 * 60_000 }, async () => {
   const origin = process.env.LIVE_APP_URL ?? "http://127.0.0.1:4000";
   const artifacts = resolve(import.meta.dirname, "../../../.tools"); mkdirSync(artifacts, { recursive: true });
   const wav = process.env.LIVE_TEST_AUDIO ?? join(artifacts, "healthscribe-test.wav");
@@ -41,14 +41,13 @@ test("live browser: registration, 30-day append, microphone HealthScribe, transl
     const registration = doctor.waitForResponse(r => r.url() === origin + "/api/patients" && r.request().method() === "POST");
     await doctor.getByRole("button", { name: "Save patient", exact: true }).click(); assert.equal((await registration).status(), 201);
     await doctor.getByRole("heading", { name: "Synthetic Workflow", exact: true }).waitFor();
-    const submit = async (kind: "text" | "audio") => {
+    const submit = async (kind: "text") => {
       console.log(JSON.stringify({ phase: "submit", kind })); const started = Date.now();
       const acceptedPromise = doctor.waitForResponse(r => r.url() === origin + "/api/ingest" && r.request().method() === "POST");
       await doctor.getByRole("button", { name: "Send writeup", exact: true }).click(); const response = await acceptedPromise; assert.equal(response.status(), 202);
       const accepted = await response.json(); await doctor.getByText("Plan ready. Open the patient link below.", { exact: true }).waitFor({ timeout: 31 * 60_000 });
       const job = await (await fetch(`${origin}/api/jobs/${accepted.jobId}`, { headers: { "x-provider-key": "local-test-key" } })).json();
       assert.equal(job.stage, "done"); assert.equal(job.inputKind, kind); assert.equal(job.meta.provider, "agentcore");
-      if (kind === "audio") assert.equal(job.meta.speechProvider, "healthscribe");
       console.log(JSON.stringify({ phase: "completed", kind, latencyMs: Date.now() - started, sourceChars: job.meta.sourceChars }));
       return { accepted, job };
     };
@@ -57,12 +56,15 @@ test("live browser: registration, 30-day append, microphone HealthScribe, transl
     await doctor.getByRole("button", { name: "Register patient", exact: true }).click();
     const matchPromise = doctor.waitForResponse(r => r.url() === origin + "/api/patients" && r.request().method() === "POST");
     await doctor.getByRole("button", { name: "Save patient", exact: true }).click(); const matched = await matchPromise; assert.equal(matched.status(), 200); assert.equal((await matched.json()).created, false);
+    await doctor.getByLabel("Visit writeup", { exact: true }).fill("");
     await doctor.getByRole("button", { name: "Start dictation", exact: true }).click(); await doctor.getByRole("button", { name: "Stop dictation", exact: true }).waitFor();
     console.log(JSON.stringify({ phase: "recording synthetic microphone", seconds: 35 }));
-    await doctor.waitForTimeout(35_000); await doctor.getByRole("button", { name: "Stop dictation", exact: true }).click();
-    await doctor.waitForFunction(() => (document.querySelector("textarea") as HTMLTextAreaElement).value.startsWith("Recorded dictation ready."));
-    const appended = await submit("audio"); assert.equal(appended.accepted.sumId, first.accepted.sumId); assert.equal(appended.accepted.expiresAt, first.accepted.expiresAt); assert.equal(appended.accepted.appended, true);
-    report.append = { sameLink: true, originalExpiry: first.accepted.expiresAt, speechProvider: appended.job.meta.speechProvider, sourceChars: appended.job.meta.sourceChars };
+    await doctor.waitForTimeout(35_000);
+    assert.match(await doctor.getByLabel("Visit writeup", { exact: true }).inputValue(), /furosemide/i);
+    await doctor.getByRole("button", { name: "Stop dictation", exact: true }).click();
+    await doctor.waitForFunction(() => !document.querySelector("textarea")!.readOnly);
+    const appended = await submit("text"); assert.equal(appended.accepted.sumId, first.accepted.sumId); assert.equal(appended.accepted.expiresAt, first.accepted.expiresAt); assert.equal(appended.accepted.appended, true);
+    report.append = { sameLink: true, originalExpiry: first.accepted.expiresAt, speechProvider: health.providers.liveDictation, sourceChars: appended.job.meta.sourceChars };
     const englishBody = await (await fetch(`${origin}/api/p/${first.accepted.sumId}`)).json(); const english = adaptSummary(englishBody).record.byLang.en!; assert.ok(english);
     const patient = await context.newPage(); await patient.goto(first.accepted.link);
     await patient.getByRole("tab", { name: "Patient", exact: true }).click(); await patient.getByLabel("Confirm your date of birth", { exact: true }).fill("2000-01-01");

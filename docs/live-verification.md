@@ -5,6 +5,8 @@
 
 ## Current feature verification
 
+Audio follow-up: after a report of no sound, a fresh live ElevenLabs request returned a non-silent MP3 and Edge playback advanced past 10 seconds, with browser volume 1 and mute false. Windows' default speakers were present, at 100% and unmuted. This did not reproduce the user's missing sound or establish what the user heard. The original speaker buttons now expose a preparing message and native audio controls during playback, including a direct Play action when browser policy blocks playback. Both browser tests pass, including simulated browser-policy rejection followed by actual MP3 playback through native controls, cancellation during preparation, and stop. The build and 38 unit/API tests also pass. Diagnostic evidence is in ignored `.tools/audio-diagnostic.json`.
+
 | Check | Result |
 | --- | --- |
 | Backend typecheck and frontend production build | Pass |

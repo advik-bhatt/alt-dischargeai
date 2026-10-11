@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const localNode = join(root, ".tools", "node_modules", "node", "bin", process.platform === "win32" ? "node.exe" : "node");
 const runtime = existsSync(localNode) ? localNode : process.execPath;
-const args = process.argv.includes("--features-test")
+const args = process.argv.includes("--dictation-live-test")
+  ? ["--import", "tsx", "--test", "test/browser/dictation-live.test.ts"]
+  : process.argv.includes("--features-test")
   ? ["--import", "tsx", "--test", "test/browser/features-live.test.ts"]
   : process.argv.includes("--live-test")
   ? ["--import", "tsx", "--test", "test/browser/live.test.ts"]

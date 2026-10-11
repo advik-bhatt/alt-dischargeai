@@ -76,6 +76,7 @@ export const ConfigSchema = z.object({
 
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
   SPEECH_PROVIDER: z.enum(["transcribe", "healthscribe"]).default("transcribe"),
+  TRANSCRIBE_STREAMING_REGION: z.string().default("us-east-1"),
   HEALTHSCRIBE_BUCKET: optionalString,
   HEALTHSCRIBE_REGION: z.string().default("us-east-1"),
   HEALTHSCRIBE_ROLE_ARN: optionalString,

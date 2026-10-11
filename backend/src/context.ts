@@ -20,6 +20,7 @@ import { createSpeechToText, type SpeechToText } from "./pipeline/speechToText.j
 import type { SecretsBootstrapResult } from "./secrets.js";
 import { AiInfraTranslator, type TranslationProvider } from "./pipeline/translation.js";
 import { ElevenLabsReadAloud, type ReadAloudProvider } from "./pipeline/readAloud.js";
+import { MedicalLiveDictation, type LiveDictationProvider } from "./pipeline/liveDictation.js";
 
 export const NO_SECRETS: SecretsBootstrapResult = { source: "env", applied: [], overriddenByEnv: [], missingKeys: [], reason: "not attempted", ms: 0 };
 
@@ -48,6 +49,7 @@ export interface AppContext {
   /** The DischargeAI agent on Bedrock AgentCore Runtime. */
   agent: AgentProvider;
   speechToText: SpeechToText;
+  liveDictation?: LiveDictationProvider;
   translator?: TranslationProvider;
   readAloud?: ReadAloudProvider;
   mailer: Mailer;
@@ -122,6 +124,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     receipts,
     agent,
     speechToText,
+    liveDictation: new MedicalLiveDictation(config.TRANSCRIBE_STREAMING_REGION),
     translator: config.TRANSLATION_PROVIDER === "ai-infra" ? new AiInfraTranslator(config) : undefined,
     readAloud: config.ELEVENLABS_API_KEY ? new ElevenLabsReadAloud(config) : undefined,
     mailer,

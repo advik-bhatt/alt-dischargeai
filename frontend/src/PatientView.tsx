@@ -126,7 +126,7 @@ export function PatientView({
 }) {
   const [language, setLanguage] = useState<Language>("en")
   const { step, scale, setFontStep, decrease, increase } = useFontScale()
-  const { speak, stop, state, error: speechError } = useReadAloud(session.patientToken)
+  const { speak, stop, state, error: speechError, audioRef } = useReadAloud(session.patientToken)
   const [activeText, setActiveText] = useState("")
 
   const handleSpeak = (text: string, lang = "en-US") => {
@@ -209,6 +209,8 @@ export function PatientView({
 
         {value?.flags.map((flag, i) => <p className="auth-notice" role="status" key={i}>{flag}</p>)}
         {speechError && <p className="auth-notice" role="alert">{speechError}</p>}
+        {state === "loading" && <p className="auth-notice" role="status">Preparing audio… Playback will start when it is ready.</p>}
+        <audio ref={audioRef} controls hidden={state === "idle" || state === "loading"} aria-label="Patient plan audio" />
         {value?.status && <p className="heading-support">Review status: {value.status}</p>}
         {!plan ? (
           <section className="patient-section" aria-live="polite">

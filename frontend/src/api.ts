@@ -6,6 +6,11 @@ export type Accepted = { sumId: string; jobId: string; link: string; expiresAt: 
 export type Job = { stage: string; error: string | null }
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message) } }
 const BASE_URL = import.meta.env.VITE_API_URL ?? "/api"
+export function dictationSocketUrl() {
+  const url = new URL(BASE_URL.replace(/\/$/, "") + "/dictation", window.location.href)
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
+  return url.toString()
+}
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(BASE_URL + path, init)
   const body = await response.json().catch(() => ({}))

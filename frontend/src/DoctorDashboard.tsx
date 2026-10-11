@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Icon, BrandMark } from "./ui"
 import { type Session } from "./auth"
-import { useAudioRecorder } from "./useAudioRecorder"
+import { useLiveDictation } from "./useLiveDictation"
 import { extractPdfText } from "./extractPdfText"
-import { postIngest, postAudio, getPatients, getPatient, waitForJob, fileToBase64, getHealth, registerPatient, type Accepted } from "./api"
+import { postIngest, getPatients, getPatient, waitForJob, fileToBase64, getHealth, registerPatient, type Accepted } from "./api"
 
 type Patient = {
   id: string
@@ -76,7 +76,7 @@ function initialsFrom(name: string) {
 }
 
 // Per-patient note store
-type PatientNote = { text: string; inputType: "text" | "pdf" | "dictation"; pdfData?: string; audio?: Blob }
+type PatientNote = { text: string; inputType: "text" | "pdf"; pdfData?: string }
 const emptyNote = (): PatientNote => ({ text: "", inputType: "text" })
 
 export function DoctorDashboard({
@@ -107,7 +107,7 @@ export function DoctorDashboard({
       const row = result.patient
       const name = [row.FirstName, row.LastName].filter(Boolean).join(" ") || String(row.ID)
       const patient = { ...emptyPatient, id: String(row.ID), dob: row.DOB ?? undefined, name, initials: initialsFrom(name), physician: session.displayName }
-      setPatients(prev => [...prev.filter(p => p.id !== patient.id), patient]); setSelectedPatientId(patient.id)
+      clearRecording(); setPatients(prev => [...prev.filter(p => p.id !== patient.id), patient]); setSelectedPatientId(patient.id)
       setSendMessage(result.created ? "Patient registered. Add a visit writeup below." : "Patient matched. New notes append to the active plan within 30 days.")
       setRegistering(false)
     } catch (err) { setRegistrationError(err instanceof Error ? err.message : "Could not register patient") }
@@ -142,10 +142,20 @@ export function DoctorDashboard({
   const [pdfLoading, setPdfLoading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
-  const { audio, isRecording, error: transcribeError, start: startRecording, stop: stopRecording, clear: clearRecording } = useAudioRecorder()
+  const dictationDraft = useRef({ patientId: "", prefix: "" })
+  const { status: dictationStatus, isRecording, isBusy: dictationBusy, error: transcribeError, start: startRecording, stop: stopRecording, clear: clearRecording } = useLiveDictation(session.providerKey ?? "", text => {
+    const { patientId, prefix } = dictationDraft.current
+    setNotes(prev => ({ ...prev, [patientId]: { text: prefix + text, inputType: "text" } }))
+  })
 
   const currentNote = notes[selectedPatientId] ?? emptyNote()
   const noteText = currentNote.text
+  const handleStartDictation = () => {
+    if (!selectedPatientId || dictationBusy) return
+    dictationDraft.current = { patientId: selectedPatientId, prefix: noteText ? noteText.trimEnd() + "\n\n" : "" }
+    setSendError(undefined); setSendMessage(undefined)
+    void startRecording()
+  }
 
   const setNoteText = (text: string, inputType?: PatientNote["inputType"]) => {
     clearRecording(); setSendMessage(undefined); setSendError(undefined)
@@ -165,11 +175,6 @@ export function DoctorDashboard({
     setPdfError(null)
     setSelectedPatientId(id)
   }
-
-  useEffect(() => {
-    if (!audio) return
-    setNotes(prev => ({ ...prev, [selectedPatientId]: { text: "Recorded dictation ready. Speech will be transcribed when submitted.", inputType: "dictation", audio } }))
-  }, [audio, selectedPatientId])
 
   const selectedPatient =
     patients.find((p) => p.id === selectedPatientId) ?? emptyPatient
@@ -221,13 +226,11 @@ export function DoctorDashboard({
   }
 
   const handleSend = async () => {
-    if (!noteText || sending || !selectedPatient.id || isRecording || pdfLoading) return
+    if (!noteText.trim() || sending || !selectedPatient.id || dictationBusy || pdfLoading) return
     setSending(true); setSendError(undefined); setSendMessage("Preparing your plan…")
     try {
       const key = session.providerKey ?? ""
-      const accepted = currentNote.inputType === "dictation" && currentNote.audio
-        ? await postAudio(currentNote.audio, selectedPatient.id, key, selectedPatient.dob)
-        : await postIngest({ data: currentNote.pdfData ?? noteText, type: currentNote.pdfData ? "pdf" : "text", patientId: selectedPatient.id, DOB: selectedPatient.dob }, key)
+      const accepted = await postIngest({ data: currentNote.pdfData ?? noteText, type: currentNote.pdfData ? "pdf" : "text", patientId: selectedPatient.id, DOB: selectedPatient.dob }, key)
       await waitForJob(accepted.jobId, key)
       setResults(prev => ({ ...prev, [selectedPatient.id]: accepted }))
       setSendMessage("Plan ready. Open the patient link below.")
@@ -316,7 +319,7 @@ export function DoctorDashboard({
                 Summarize the visit and send clear next steps to the right people.
               </p>
             </div>
-            <button className="secondary-button" type="button" onClick={() => setRegistering(value => !value)} disabled={sending || savingPatient}>
+            <button className="secondary-button" type="button" onClick={() => setRegistering(value => !value)} disabled={sending || savingPatient || dictationBusy}>
               <Icon name="clock" size={17} />
               Register patient
             </button>
@@ -399,7 +402,8 @@ export function DoctorDashboard({
                 <div className="textarea-wrap">
                   <textarea
                     id="visit-summary"
-                    disabled={sending || pdfLoading || isRecording}
+                    disabled={sending || pdfLoading}
+                    readOnly={dictationBusy}
                     aria-label="Visit writeup"
                     className={isRecording ? "is-recording-textarea" : ""}
                     onChange={(e) => setNoteText(e.target.value)}
@@ -410,9 +414,9 @@ export function DoctorDashboard({
                   {/* Mic button — top right */}
                   <button
                     aria-label={isRecording ? "Stop dictation" : "Start dictation"}
-                    disabled={sending || pdfLoading || environment?.capabilities.dictation === false}
+                    disabled={sending || pdfLoading || !selectedPatientId || (dictationBusy && !isRecording) || environment?.capabilities.dictation === false}
                     className={`mic-button ${isRecording ? "mic-active" : ""}`}
-                    onClick={isRecording ? stopRecording : startRecording}
+                    onClick={isRecording ? stopRecording : handleStartDictation}
                     title={environment?.capabilities.dictation === false ? "Paste text or upload a PDF; live dictation is not configured" : isRecording ? "Stop dictation" : "Dictate into note"}
                     type="button"
                   >
@@ -428,7 +432,7 @@ export function DoctorDashboard({
                     <Icon name={pdfLoading ? "clock" : "upload"} size={18} />
                     <input
                       accept="application/pdf"
-                      disabled={sending || pdfLoading || isRecording || !selectedPatientId}
+                      disabled={sending || pdfLoading || dictationBusy || !selectedPatientId}
                       hidden
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePdfFile(f) }}
                       type="file"
@@ -437,15 +441,15 @@ export function DoctorDashboard({
                 </div>
 
                 {pdfError && <p className="transcript-error">⚠ {pdfError}</p>}
-                {transcribeError && <p className="transcript-error">{transcribeError}</p>}
+                {transcribeError && <p className="transcript-error" role="alert">{transcribeError}</p>}
 
                 <div className="editor-footer">
                   <span>{noteText.length} characters</span>
                   <span>
-                    {isRecording ? (
+                    {dictationBusy ? (
                       <span className="recording-indicator">
                         <span className="recording-dot" aria-hidden="true" />
-                        Listening… {formattedTime}
+                        {dictationStatus === "connecting" ? "Connecting microphone…" : dictationStatus === "finishing" ? "Finishing transcription…" : `Listening… ${formattedTime}`}
                       </span>
                     ) : (
                       "Last edit just now"
@@ -454,7 +458,7 @@ export function DoctorDashboard({
                 </div>
               </div>
 
-              {environment?.mode === "local-agentcore" && <p className="heading-support" role="status">Live AI · local storage · test emails captured locally. {environment.capabilities.dictation ? "Use text, PDF or recorded dictation." : "Use text or PDF."}</p>}
+              {environment?.mode === "local-agentcore" && <p className="heading-support" role="status">Live AI · local storage · test emails captured locally. {environment.capabilities.dictation ? "Use text, PDF or live dictation. Dictation appears as you speak; stop to review and edit it before sending." : "Use text or PDF."}</p>}
               {loadError && <p className="transcript-error" role="alert">{loadError}</p>}
               {sendError && <p className="transcript-error" role="alert">{sendError}</p>}
               {sendMessage && <p className="heading-support" role="status">{sendMessage}</p>}
@@ -471,7 +475,7 @@ export function DoctorDashboard({
                 </button>
                 <button
                   className="primary-button"
-                  disabled={sending || !noteText || isRecording || pdfLoading || !selectedPatientId}
+                  disabled={sending || !noteText.trim() || dictationBusy || pdfLoading || !selectedPatientId}
                   onClick={handleSend}
                   type="button"
                 >

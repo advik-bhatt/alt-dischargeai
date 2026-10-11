@@ -24,8 +24,9 @@ import type { Config } from "../../src/config.js";
 import type { SpeechToText } from "../../src/pipeline/types.js";
 import type { TranslationProvider } from "../../src/pipeline/translation.js";
 import type { ReadAloudProvider } from "../../src/pipeline/readAloud.js";
+import type { LiveDictationProvider } from "../../src/pipeline/liveDictation.js";
 
-export interface LocalProviders { agent?: AgentProvider; speech?: SpeechToText; translator?: TranslationProvider; readAloud?: ReadAloudProvider; config?: Partial<Config>; dataDir?: string }
+export interface LocalProviders { agent?: AgentProvider; speech?: SpeechToText; liveDictation?: LiveDictationProvider; translator?: TranslationProvider; readAloud?: ReadAloudProvider; config?: Partial<Config>; dataDir?: string }
 
 export const LOCAL_PROVIDER_KEY = "local-test-key";
 export const LOCAL_AUDIO_TRANSCRIPT = "Synthetic audio transcript for local workflow testing. This is a fixed fixture, not recognized speech.";
@@ -179,6 +180,20 @@ export async function createLocalContext(opts: LocalProviders & { port?: number;
       },
     },
     translator: opts.translator, readAloud: opts.readAloud,
+    liveDictation: opts.liveDictation ?? (opts.agent ? undefined : {
+      name: "local-fixture",
+      async *transcribe(audio, _sampleRate, signal) {
+        let received = false;
+        for await (const chunk of audio) {
+          if (signal.aborted) return;
+          if (chunk.length && !received) {
+            received = true;
+            yield { id: "fixture", text: "Synthetic audio transcript", partial: true };
+          }
+        }
+        if (received && !signal.aborted) yield { id: "fixture", text: LOCAL_AUDIO_TRANSCRIPT, partial: false };
+      },
+    }),
     speechToText: opts.speech ?? (opts.agent ? { name: "unavailable", async transcribe() { throw new Error("Live dictation is unavailable with local storage. Paste notes or upload a readable PDF."); } }
       : { name: "local-fixture", async transcribe() { return { transcript: LOCAL_AUDIO_TRANSCRIPT, provider: "local-fixture", latencyMs: 0 }; } }),
     mailer: { transportName: "local-outbox", async send(mail) {

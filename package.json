@@ -11,6 +11,7 @@
     "test:browser": "node scripts/local.mjs --browser-test",
     "test:live": "node scripts/local.mjs --live-test",
     "test:features": "node scripts/local.mjs --features-test",
+    "test:dictation:live": "node scripts/local.mjs --dictation-live-test",
     "test:practice": "node scripts/practice.mjs",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
