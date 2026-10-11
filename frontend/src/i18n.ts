@@ -9,7 +9,7 @@
 // data.ts, fully populated per language. This module is ONLY the surrounding
 // interface text.
 
-import { type Language } from "./data"
+import { type Language } from "./data.js"
 
 export type UIKey =
   // Patient intro + shell chrome

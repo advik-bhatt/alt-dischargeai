@@ -15,21 +15,24 @@ import { type Language } from "./data"
 
 export function DeletionTimer({
   createdAt,
+  expiresAt,
   language,
 }: {
   createdAt: number
+  expiresAt?: string
   language: Language
 }) {
-  const [days, setDays] = useState(() => daysUntilDeletion(createdAt))
+  const remaining = () => expiresAt ? Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 86400000)) : daysUntilDeletion(createdAt)
+  const [days, setDays] = useState(remaining)
 
   useEffect(() => {
-    setDays(daysUntilDeletion(createdAt))
+    setDays(remaining())
     const id = setInterval(
-      () => setDays(daysUntilDeletion(createdAt)),
+      () => setDays(remaining()),
       60 * 60 * 1000,
     )
     return () => clearInterval(id)
-  }, [createdAt])
+  }, [createdAt, expiresAt])
 
   const message =
     days <= 0

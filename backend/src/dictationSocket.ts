@@ -52,7 +52,7 @@ export function attachDictationSocket(server: Server, ctx: AppContext) {
                 if (ws.bufferedAmount > 256 * 1024) throw new Error("Client is too slow");
                 send({ type: "transcript", ...result });
               }
-              send({ type: "done" }); ws.close(1000);
+              send({ type: "done" }); controller.abort(); ws.close(1000);
             } catch (error) {
               if (!controller.signal.aborted) {
                 ctx.log.warn({ errorName: error instanceof Error ? error.name : "unknown" }, "live dictation failed");

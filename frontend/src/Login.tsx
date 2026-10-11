@@ -60,7 +60,7 @@ export function Login({
       if (role === "patient" || role === "caregiver") {
         // Both patient and caregiver use access link + DOB
         const token = parsePatientLink(accessLink)
-        const session = await resolvePatientToken(token, dob)
+        const session = await resolvePatientToken(token, dob, role)
         // Guard: token must resolve to the correct role
         if (session.role !== role) {
           throw new Error("The information entered doesn't match our records.")

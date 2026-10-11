@@ -15,7 +15,7 @@ import { PatientView } from "./PatientView"
 // Detect a patient access link (/p/<token>) once at module load. The opaque
 // token is the ONLY identifier permitted in a URL — no name/DOB/MRN (HIPAA 1).
 function readInitialToken(): string | undefined {
-  const match = window.location.pathname.match(/^\/p\/(.+)$/)
+  const match = window.location.pathname.match(/^\/(?:p|s)\/([^/]+)$/)
   return match ? match[1] : undefined
 }
 
@@ -25,7 +25,10 @@ export default function App() {
   // Restore a non-expired session from sessionStorage (restoreSession already
   // drops expired markers). RBAC (HIPAA 5) is enforced by rendering strictly
   // one view per role below.
-  const [session, setSession] = useState<Session | null>(() => restoreSession())
+  const [session, setSession] = useState<Session | null>(() => {
+    const saved = restoreSession()
+    return initialToken && saved?.patientToken !== initialToken ? null : saved
+  })
   const [signedOutNotice, setSignedOutNotice] = useState<string | undefined>(
     undefined,
   )

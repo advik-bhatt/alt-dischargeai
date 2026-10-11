@@ -19,6 +19,7 @@ export type MedScheduleKey =
   | "iv" // "IV ANTIBIOTIC"
   | "perHospitalList" // "TAKE AS YOUR HOSPITAL MEDICINE LIST SAYS"
   | "asNeeded" // "ONLY WHEN NEEDED"
+  | "onceDaily" | "twiceDaily" | "threeTimesDaily" | "fourTimesDaily" | "otherSchedule"
 
 export type MedItem = {
   id: string // opaque, stable — used for checklist state (never a drug name)
@@ -72,14 +73,14 @@ export type DischargePlan = {
 // Content is language-keyed so the patient language toggle swaps the whole
 // plan. Every supported language is fully populated for every patient — there
 // is no English fallback or placeholder (that was the half-translated bug).
-export type DischargePlanByLang = Record<Language, DischargePlan>
+export type DischargePlanByLang = Partial<Record<Language, DischargePlan>>
 
 // A stored per-patient record: when it was created (for the deletion
 // countdown) plus the per-language plan bundle.
 //
 // TODO: use the real expiresAt from GET /p/:token (the backend sets
 // expiresAt = createdAt + 30 days via DynamoDB TTL + S3 lifecycle).
-export type DischargeRecord = { createdAt: number; byLang: DischargePlanByLang }
+export type DischargeRecord = { createdAt: number; expiresAt?: string; byLang: DischargePlanByLang }
 
 // Language option: `label`/`endonym` is the name in the language itself, `name`
 // is the English name (both searchable), and `symbol` is a script glyph shown
@@ -97,7 +98,7 @@ export const LANGUAGES: {
 ]
 
 // Standard group labels per language. Only groups that have items are rendered.
-const GROUP_LABELS: Record<Language, Record<MedScheduleKey, string>> = {
+const GROUP_LABELS: Record<Language, Partial<Record<MedScheduleKey, string>>> = {
   en: {
     morning: "MORNING",
     afternoon: "AFTERNOON",
@@ -139,7 +140,7 @@ const GROUP_LABELS: Record<Language, Record<MedScheduleKey, string>> = {
 // Build a med group in English (the authored source of truth). Translation of
 // group labels happens in translatePlan via GROUP_LABELS.
 function group(key: MedScheduleKey, items: MedItem[]): MedGroup {
-  return { key, label: GROUP_LABELS.en[key], items }
+  return { key, label: GROUP_LABELS.en[key] ?? key, items }
 }
 
 const MED_INTRO = "These are all the medicines you should take now."
@@ -180,7 +181,7 @@ function translatePlan(
       intro: text.medicationsIntro,
       groups: en.medications.groups.map((grp, gi) => ({
         key: grp.key,
-        label: GROUP_LABELS[lang][grp.key],
+        label: GROUP_LABELS[lang][grp.key] ?? grp.label,
         items: grp.items.map((item, ii) => {
           const tr = text.medGroups[gi].items[ii]
           return {
