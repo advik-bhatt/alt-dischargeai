@@ -95,6 +95,13 @@ export const ConfigSchema = z.object({
   /** Where deletion receipts go: sql (audit_log, default) or dynamo (receipt# items in the table). */
   AUDIT_SINK: z.enum(["sql", "dynamo"]).default("sql"),
 
+  /** Hosted mode only: the one provider sign-in for the dashboard. Unset means provider sign-in answers 501. */
+  DOCTOR_EMAIL: optionalString,
+  DOCTOR_PASSWORD: optionalString,
+  DOCTOR_DISPLAY_NAME: z.string().default("Dr. A. Rivera"),
+  /** Hosted mode only: postgres://user:password@host:port/database (Supabase). */
+  POSTGRES_URL: optionalString,
+
   EMAIL_TRANSPORT: z.enum(["console", "smtp", "ses"]).default("console"),
   EMAIL_FROM: z.string().default("DischargeAI <noreply@example.test>"),
   SMTP_URL: optionalString,

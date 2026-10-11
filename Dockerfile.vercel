@@ -1,0 +1,23 @@
+# The hosted DischargeAI app on Vercel's container runtime: the built UI and the API on one origin,
+# Postgres for storage (POSTGRES_URL), and Python for the AI-Infra translation agent.
+FROM node:24-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY backend/package.json backend/package-lock.json backend/
+COPY frontend/package.json frontend/package-lock.json frontend/
+RUN npm --prefix backend ci --no-audit --no-fund && npm --prefix frontend ci --no-audit --no-fund
+
+COPY AI-Infra/requirements.txt AI-Infra/requirements.txt
+RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r AI-Infra/requirements.txt
+
+COPY . .
+RUN node scripts/build-frontend.mjs
+
+ENV NODE_ENV=production PYTHON_EXECUTABLE=/opt/venv/bin/python
+WORKDIR /app/backend
+# Listens on $PORT (Vercel's default is 80).
+CMD ["node", "--import", "tsx", "src/hosted/server.ts"]

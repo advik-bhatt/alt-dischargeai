@@ -1,6 +1,6 @@
 # DischargeAI
 
-The workspace combines the frontend from `origin/frontend+backend`, the TypeScript backend from `main`, and agent source from `origin/AI-Infra`. The original frontend layout, styles, branding, and role controls are preserved. Its data and submit actions now use the backend's `/api` routes. No code has been committed or pushed.
+The workspace combines the frontend from `origin/frontend+backend`, the TypeScript backend from `main`, and agent source from `origin/AI-Infra`. The original frontend layout, styles, branding, and role controls are preserved. Its data and submit actions now use the backend's `/api` routes. It runs three ways: the local runner below, the local-storage live-AI mode, and the hosted deployment on Vercel (see "Hosted deployment").
 
 ## Run and test locally
 
@@ -65,6 +65,29 @@ npm run test:live
 Without `LIVE_TEST_ORIGIN`, the test starts and closes an isolated local server. It invokes AWS and checks doctor submission, completion, saved response and patient/caregiver rendering through real HTTP. The ignored report is `.tools/live-workflow-report.json`; summaries and screenshots are `.tools/live-*.json` and `.tools/live-*.png`. These verify integration, not clinical correctness.
 
 The live test accepts `PRACTICE_PDF` only for extracting **Example 1** as a text request; its PDF request remains synthetic. Sending clinical examples to AWS requires authorization for that data and runtime. The user explicitly authorized Example 1 to the account and region above, and the live test passed in about 4 minutes 15 seconds. Both patient and caregiver views displayed the generated medications, changes, follow-up and warnings. Other examples have not been sent to AWS. Details are in [the verification report](docs/live-verification.md).
+
+## Hosted deployment (Vercel)
+
+The hosted app is the `local:ai` app with its SQLite file swapped for Postgres, so it runs on a server that keeps nothing on disk. `Dockerfile.vercel` builds the frontend, installs the backend and the AI-Infra Python translator, and runs `backend/src/hosted/server.ts` on Vercel's container runtime (beta). Pushing to `main` deploys it. One origin serves the UI and `/api`.
+
+Storage is the Supabase project `dischargeai`, schema `dischargeai` (not `public`, so Supabase's auto-generated Data API cannot reach it), logged in as the role `dischargeai_app`. On boot the server creates its tables when missing (`backend/src/hosted/postgres.ts`: `activeLinks`, `jobs`, `audit_log`, `patientinfo`, plus `hosted_summaries` for plans and `hosted_objects` for uploaded PDFs and audio) and adds the two synthetic demo patients (IDs 7 and 8, DOB `2000-01-01`) that the login screen's patient and caregiver codes use.
+
+Environment variables (Vercel project settings):
+
+| Variable | Needed for | Notes |
+| --- | --- | --- |
+| `POSTGRES_URL` | boot | `postgres://dischargeai_app.<project-ref>:<password>@<pooler-host>:5432/postgres` |
+| `PROVIDER_API_KEY` | boot | long random value; the server refuses to start with `dev-provider-key` |
+| `DOCTOR_EMAIL`, `DOCTOR_PASSWORD` | doctor sign-in | the one provider account; set to the demo account the login screen shows |
+| `PATIENT_APP_URL` | patient links | the deployment's public URL; defaults to `https://$VERCEL_PROJECT_PRODUCTION_URL` |
+| `AGENT_RUNTIME_ARN` | plan generation | an AgentCore runtime the AWS credentials may invoke; the region comes from the ARN |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | plan generation, dictation, translation | temporary hackathon credentials expire and must be replaced when they do |
+| `TRANSLATION_PROVIDER` | translation | `ai-infra` runs the AI-Infra translator (Python is in the image); it needs the AWS credentials too |
+| `ELEVENLABS_API_KEY` | read-aloud | optional |
+
+Without `AGENT_RUNTIME_ARN` and working AWS credentials the app still signs in, registers patients and accepts writeups, and each job fails with "AI is not configured on this server"; there is no fixture fallback. Emails print to the server log (`EMAIL_TRANSPORT=console`). Jobs run inside the instance that accepted them; a job whose instance was stopped is picked up again by the next instance once it has been idle longer than `AGENT_TIMEOUT_MS` plus a minute. `npm test` covers the hosted mode against a real Postgres when `HOSTED_TEST_POSTGRES_URL` is set (see `backend/test/hosted.test.ts`).
+
+To run the same image locally: `docker build -f Dockerfile.vercel -t dischargeai-hosted .` then `docker run -p 8080:80 -e POSTGRES_URL=... -e PROVIDER_API_KEY=... -e DOCTOR_EMAIL=... -e DOCTOR_PASSWORD=... dischargeai-hosted`.
 
 ## Use the practice PDF
 

@@ -27,7 +27,7 @@ export const NO_SECRETS: SecretsBootstrapResult = { source: "env", applied: [], 
 /** Everything a route or a job needs, wired once at boot. */
 export interface AppContext {
   /** Present only in the explicitly launched, isolated local verification server. */
-  mode?: "local-test" | "local-agentcore";
+  mode?: "local-test" | "local-agentcore" | "hosted";
   config: Config;
   /** Where the configuration came from (names only), for /health. */
   secrets: SecretsBootstrapResult;

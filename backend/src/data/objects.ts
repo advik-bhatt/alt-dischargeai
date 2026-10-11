@@ -15,7 +15,7 @@ export interface StoredObject {
 }
 
 export interface ObjectStore {
-  readonly name: "s3" | "memory" | "sqlite";
+  readonly name: "s3" | "memory" | "sqlite" | "postgres";
   put(input: StoredObject): Promise<void>;
   get(key: string): Promise<StoredObject | null>;
   /** Returns false when nothing was there. */
