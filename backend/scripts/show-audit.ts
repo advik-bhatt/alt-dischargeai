@@ -20,7 +20,6 @@ const { env, secrets } = await loadRuntimeEnv({ log: createLogger("silent") });
 const ctx = await createContext({
   env: { ...env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: "silent" },
   secrets,
-  seed: false,
   resumeJobs: false,
 });
 

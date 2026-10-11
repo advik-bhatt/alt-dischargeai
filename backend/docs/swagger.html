@@ -16,7 +16,7 @@
   "info": {
     "title": "DischargeAI backend",
     "version": "0.2.0",
-    "description": "Discharge summaries in (pasted text, a PDF, or dictated audio), a plain-language patient link out,\nevery piece of data self-destructs 30 days after it was created.\n\nSurface: the API note first, the team architecture diagram where the note is silent.\nProvider endpoints need the `x-provider-key` header. Patient endpoints are authenticated by the\nunguessable 128-bit link id (22 base64url characters) and need no header.\n\nTranslation is not part of ingestion: POST /ingest takes no language and ends with the English\nsummary. A language is taken only where a patient or provider asks for one (GET /translation and its\naliases, POST /synthesize); any BCP-47 code or English language name the model supports is accepted\nthere; tested offline with fixtures: en, es (Spanish), zh (Mandarin), ar (Arabic).\nNames recognised: English, Spanish, Mandarin/Chinese, Arabic, Portuguese, French, Haitian Creole,\nRussian, Korean, Vietnamese, Tagalog/Filipino, Hindi, Gujarati, Polish, Italian, German, Japanese,\nUrdu, Bengali, Persian/Farsi. Medication names and doses are never translated.\n"
+    "description": "Discharge summaries in (pasted text, a PDF, or dictated audio), a plain-language patient link out,\nevery piece of data self-destructs 30 days after it was created.\n\nSurface: the API note first, the team architecture diagram where the note is silent.\nProvider endpoints need the `x-provider-key` header. Patient endpoints are authenticated by the\nunguessable 128-bit link id (22 base64url characters) and need no header.\n\nTranslation is not part of ingestion: POST /ingest takes no language and ends with the English\nsummary. A language is taken only where a patient or provider asks for one (GET /translation and its\naliases, POST /synthesize); any BCP-47 code or English language name the model supports is accepted\nthere (en, es (Spanish), zh (Mandarin) and ar (Arabic) are the ones tried).\nNames recognised: English, Spanish, Mandarin/Chinese, Arabic, Portuguese, French, Haitian Creole,\nRussian, Korean, Vietnamese, Tagalog/Filipino, Hindi, Gujarati, Polish, Italian, German, Japanese,\nUrdu, Bengali, Persian/Farsi. Medication names and doses are never translated.\n"
   },
   "servers": [
     {
@@ -682,7 +682,7 @@
           "meta": {
             "type": "object",
             "additionalProperties": true,
-            "description": "provider, model, usage, llmMs, fixture, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider"
+            "description": "provider, model, usage, llmMs, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider"
           },
           "sumId": {
             "type": "string"

@@ -10,11 +10,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "demo": "sh scripts/demo.sh",
-    "seed": "tsx scripts/seed.ts",
     "sweep": "tsx scripts/sweep.ts",
     "check-sql": "tsx scripts/check-sql.ts",
     "fetch-rds-bundle": "sh scripts/fetch-rds-bundle.sh",
@@ -23,12 +19,8 @@
     "setup-s3": "tsx scripts/setup-s3.ts",
     "ensure-s3-lifecycle": "tsx scripts/ensure-s3-lifecycle.ts",
     "email-worker": "tsx scripts/email-worker.ts",
-    "live-ingest": "tsx scripts/live-ingest.ts",
-    "verify-infra": "tsx scripts/verify-infra.ts",
-    "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts",
     "export-contract": "tsx scripts/export-contract.ts",
-    "docs": "tsx scripts/swagger-docs.ts",
-    "sample-entry": "tsx scripts/sample-entry.ts"
+    "docs": "tsx scripts/swagger-docs.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
@@ -60,13 +52,8 @@
     "@types/express": "^5.0.6",
     "@types/multer": "^2.3.0",
     "@types/node": "^24.19.2",
-    "@types/pdfkit": "^0.17.0",
-    "@types/supertest": "^7.2.1",
     "@types/swagger-ui-express": "^4.1.8",
-    "pdfkit": "^0.20.2",
-    "supertest": "^7.3.1",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "typescript": "^7.0.2"
   }
 }

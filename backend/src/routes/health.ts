@@ -25,7 +25,7 @@ export function healthRouter(ctx: AppContext): Router {
       },
       providers: {
         llm: ctx.simplifier.name,
-        llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.LLM_PROVIDER === "anthropic" ? ctx.config.ANTHROPIC_MODEL : "fixtures+rules",
+        llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.LLM_PROVIDER === "anthropic" ? ctx.config.ANTHROPIC_MODEL : "rules",
         speech: ctx.speechToText.name,
         sql: ctx.db.dialect,
         sqlConnection: ctx.db.describe,

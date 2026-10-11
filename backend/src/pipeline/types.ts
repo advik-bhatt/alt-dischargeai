@@ -37,8 +37,6 @@ export interface SimplifyResult {
   model?: string;
   usage?: LlmUsage;
   latencyMs?: number;
-  /** Which curated fixture matched, offline provider only. */
-  fixture?: string;
 }
 
 export interface Simplifier {
@@ -61,7 +59,6 @@ export interface TranslateResult {
   model?: string;
   usage?: LlmUsage;
   latencyMs?: number;
-  fixture?: string;
 }
 
 export interface Translator {
@@ -79,7 +76,6 @@ export interface PipelineMeta {
   provider: string;
   model?: string;
   usage?: LlmUsage;
-  fixture?: string;
   latencyMs: number;
   sourceChars: number;
   /** Languages that were requested but not produced (blocked record, or a translation that failed its check). */

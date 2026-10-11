@@ -1,26 +1,20 @@
 import type { Config } from "../config.js";
 import type { Logger } from "../logger.js";
-import { loadAiOutputFixture, matchFixture } from "./offline/fixtures.js";
 import { ruleBasedSimplify } from "./offline/rules.js";
 import type { Simplifier, SimplifyResult } from "./types.js";
 
 export type { Simplifier, SimplifyResult } from "./types.js";
 
 /**
- * Offline twin of "Jargon to plain language": curated fixtures for the five hackathon examples
- * (matched by fingerprint), rule-based extraction for anything else. Runs the demo and the tests
- * with no keys.
+ * Offline twin of "Jargon to plain language": rule-based extraction, no model and no keys. It reads
+ * discharge text laid out with headings and bulleted lines; anything else is caught by the safety
+ * check and held for review.
  */
 export class OfflineSimplifier implements Simplifier {
   readonly name = "offline";
 
   async simplify(input: { text: string }): Promise<SimplifyResult> {
     const t0 = Date.now();
-    const match = matchFixture(input.text);
-    const fixture = match ? loadAiOutputFixture(match.id, "en") : undefined;
-    if (match && fixture) {
-      return { output: fixture, provider: this.name, model: `fixture:${match.id}`, fixture: match.id, latencyMs: Date.now() - t0 };
-    }
     return { output: ruleBasedSimplify(input.text), provider: this.name, model: "rules", latencyMs: Date.now() - t0 };
   }
 }

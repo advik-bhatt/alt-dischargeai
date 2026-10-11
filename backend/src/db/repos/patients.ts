@@ -30,20 +30,6 @@ export interface Patient {
   preferredLanguage: string | null;
 }
 
-/** The synthetic patients that `npm run seed` writes into a local SQLite table (never MySQL). */
-export interface NewPatient {
-  id: string;
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  zipCode: string;
-  email: string;
-  phone: string;
-  caregiverEmail?: string | null;
-  caregiverName?: string | null;
-  preferredLanguage?: string | null;
-}
-
 /** The team contract's GET /patients item: exactly these nine keys, these spellings. */
 export interface ContractPatient {
   ID: string | number;
@@ -208,31 +194,6 @@ export class PatientsRepo {
     return Number(row?.n ?? 0);
   }
 
-  /**
-   * Local SQLite only (`npm run seed`, tests): inserts one synthetic patient into the mapped columns.
-   * Refuses on MySQL, where the table is the team's real patient list.
-   */
-  async insertLocal(p: NewPatient): Promise<void> {
-    if (this.db.dialect !== "sqlite") throw new Error(`Refusing to write synthetic patients into ${this.db.describe}: "${this.table}" there is the team's real patient table. Seeding is for local SQLite only.`);
-    const map = await this.columnMap();
-    const values: Partial<Record<Field, SqlParam>> = {
-      id: p.id,
-      firstName: p.firstName,
-      lastName: p.lastName,
-      dateOfBirth: p.dateOfBirth,
-      zipCode: p.zipCode,
-      email: p.email,
-      phone: p.phone,
-      caregiverEmail: p.caregiverEmail ?? null,
-      caregiverName: p.caregiverName ?? null,
-      preferredLanguage: p.preferredLanguage ?? null,
-    };
-    const fields = (Object.keys(values) as Field[]).filter((f) => map[f]);
-    await this.db.run(
-      `INSERT INTO ${quote(this.table)} (${fields.map((f) => quote(map[f]!)).join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`,
-      fields.map((f) => values[f] ?? null),
-    );
-  }
 }
 
 function contractField(key: (typeof CONTRACT_PATIENT_KEYS)[number]): Field {

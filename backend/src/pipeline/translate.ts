@@ -1,28 +1,19 @@
 import type { AiOutput } from "../contracts/aiOutput.js";
 import type { Config } from "../config.js";
 import type { Logger } from "../logger.js";
-import { fixtureIdFor, loadAiOutputFixture } from "./offline/fixtures.js";
 import type { TranslateInput, TranslateResult, Translator } from "./types.js";
 
 export type { TranslateInput, TranslateResult, Translator } from "./types.js";
 
 /**
- * Offline twin of "Translate": curated fixtures for Example 1 (es, zh, ar), a phrase dictionary for
- * Spanish on anything else, identity for English, and a visibly marked passthrough for other
- * languages. Medication names and doses are never touched.
+ * Offline twin of "Translate": a phrase dictionary for Spanish, identity for English, and a visibly
+ * marked passthrough for other languages. Medication names and doses are never touched.
  */
 export class OfflineTranslator implements Translator {
   readonly name = "offline";
 
   async translate(input: TranslateInput): Promise<TranslateResult> {
     const t0 = Date.now();
-    const fixtureId = fixtureIdFor(input.english);
-    if (fixtureId) {
-      const fixture = loadAiOutputFixture(fixtureId, input.language);
-      if (fixture) {
-        return { output: fixture, provider: this.name, model: `fixture:${fixtureId}.${input.language}`, fixture: `${fixtureId}.${input.language}`, latencyMs: Date.now() - t0 };
-      }
-    }
     if (input.language === "en") {
       return { output: structuredClone(input.english), provider: this.name, model: "identity", latencyMs: Date.now() - t0 };
     }

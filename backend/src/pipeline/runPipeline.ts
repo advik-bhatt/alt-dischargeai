@@ -94,7 +94,6 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
       provider: simplified.provider,
       model: simplified.model,
       usage: simplified.usage,
-      fixture: simplified.fixture,
       latencyMs: Date.now() - t0,
       sourceChars: sourceText.length,
       skipped,

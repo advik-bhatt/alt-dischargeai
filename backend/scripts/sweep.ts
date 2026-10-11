@@ -15,7 +15,6 @@ const { env, secrets } = await loadRuntimeEnv();
 const ctx = await createContext({
   env: { ...env, LLM_PROVIDER: "offline", SPEECH_PROVIDER: "offline", EMAIL_TRANSPORT: "console", EMAIL_QUEUE: "none", PURGE_INTERVAL_MS: "0", LOG_LEVEL: env.LOG_LEVEL ?? "warn" },
   secrets,
-  seed: false,
   resumeJobs: false,
 });
 const report = await ctx.purge();

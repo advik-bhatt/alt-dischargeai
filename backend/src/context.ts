@@ -8,7 +8,6 @@ import { ActiveLinksRepo } from "./db/repos/activeLinks.js";
 import { AuditRepo } from "./db/repos/audit.js";
 import { JobsRepo } from "./db/repos/jobs.js";
 import { PatientsRepo } from "./db/repos/patients.js";
-import { seedPatients } from "./db/seed.js";
 import { createSummaryStore, resolveDocStore, type SummaryStore } from "./docstore/index.js";
 import { createMailer, type Mailer } from "./email/mailer.js";
 import { createSqsEmailQueue, type EmailQueue } from "./email/queue.js";
@@ -62,15 +61,13 @@ export interface AppContext {
 export interface CreateContextOptions {
   env?: Record<string, string | undefined>;
   overrides?: Partial<Config>;
-  /** The Secrets Manager bootstrap report from loadRuntimeEnv (the server); tests and offline scripts omit it. */
+  /** The Secrets Manager bootstrap report from loadRuntimeEnv (the server); one-shot scripts omit it. */
   secrets?: SecretsBootstrapResult;
-  /** Swap any provider in tests. */
+  /** Swap any provider. */
   simplifier?: Simplifier;
   translator?: Translator;
   speechToText?: SpeechToText;
   mailer?: Mailer;
-  /** Write the six synthetic patients into a local SQLite patients table. Tests only; refused on MySQL. */
-  seed?: boolean;
   /** Re-enqueue jobs left unfinished by a previous process (the API server does; one-shot scripts must not). */
   resumeJobs?: boolean;
 }
@@ -101,12 +98,6 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const stores = await createObjectStores(config, secretResolved, log);
   const receipts = await createAuditSink(config, { audit });
 
-  // Never on by default: only the test suite asks for the synthetic patients (npm run seed is the
-  // manual path), and seedPatients refuses anything but local SQLite.
-  if (opts.seed === true) {
-    const added = await seedPatients(patients, audit, () => clock.nowIso());
-    if (added) log.info({ added }, "seeded synthetic patients");
-  }
 
   const simplifier = opts.simplifier ?? (await createSimplifier(config, log));
   const translator = opts.translator ?? (await createTranslator(config, log));

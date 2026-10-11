@@ -13,7 +13,7 @@ info:
     Translation is not part of ingestion: POST /ingest takes no language and ends with the English
     summary. A language is taken only where a patient or provider asks for one (GET /translation and its
     aliases, POST /synthesize); any BCP-47 code or English language name the model supports is accepted
-    there; tested offline with fixtures: en, es (Spanish), zh (Mandarin), ar (Arabic).
+    there (en, es (Spanish), zh (Mandarin) and ar (Arabic) are the ones tried).
     Names recognised: English, Spanish, Mandarin/Chinese, Arabic, Portuguese, French, Haitian Creole,
     Russian, Korean, Vietnamese, Tagalog/Filipino, Hindi, Gujarati, Polish, Italian, German, Japanese,
     Urdu, Bengali, Persian/Farsi. Medication names and doses are never translated.
@@ -221,7 +221,7 @@ components:
         safety: { nullable: true, allOf: [{ $ref: "#/components/schemas/SafetyResult" }] }
         verified: { type: boolean, nullable: true }
         languages: { type: array, items: { type: string }, description: "Languages the summary currently holds, English first; GET /translation adds to it" }
-        meta: { type: object, additionalProperties: true, description: "provider, model, usage, llmMs, fixture, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider" }
+        meta: { type: object, additionalProperties: true, description: "provider, model, usage, llmMs, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider" }
         sumId: { type: string }
         linkRef: { type: string, description: First 8 hex characters of the sumId's sha256, for logs }
         linkStatus: { type: string, nullable: true, enum: [pending, ready, needs_review, failed, expired, purged] }

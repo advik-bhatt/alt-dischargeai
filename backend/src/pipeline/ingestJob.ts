@@ -73,7 +73,7 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
     await jobs.setSafety(jobId, run.safety, clock.nowIso());
     await jobs.mergeMeta(
       jobId,
-      { provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, llmMs: run.meta.latencyMs, fixture: run.meta.fixture, sourceChars: run.meta.sourceChars },
+      { provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, llmMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
       clock.nowIso(),
     );
     await setStage("stored");
@@ -123,7 +123,7 @@ export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: st
     status,
     inputKind,
     safety: run.safety,
-    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, fixture: run.meta.fixture, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
+    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
   };
   // Only touch `translations` when there is something to replace or to write.
   if (Object.keys(translations).length || Object.keys(current?.translations ?? {}).length) patch.translations = translations;
