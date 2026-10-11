@@ -7,6 +7,8 @@ export function healthRouter(ctx: AppContext): Router {
     res.json({
       ok: true,
       service: "dischargeai-backend",
+      mode: ctx.mode ?? "aws",
+      capabilities: { liveAi: ctx.agent.name === "agentcore", dictation: ctx.speechToText.name !== "unavailable", translation: !!ctx.translator, readAloud: !!ctx.readAloud },
       node: process.version,
       clock: { now: ctx.clock.nowIso(), offsetDays: ctx.clock.offsetDays, demoNow: ctx.clock.demoNow },
       linkTtlDays: ctx.linkTtlDays,

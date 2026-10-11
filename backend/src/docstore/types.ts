@@ -39,13 +39,14 @@ export interface SummaryItem {
   pdfKey?: string;
   audioKey?: string;
   meta?: SummaryMeta;
+  translations?: Record<string, import("../pipeline/translation.js").TranslationResult>;
 }
 
 /** Top-level attributes a caller may set after creation (the agent response, status, metadata). */
 export type SummaryPatch = Partial<Omit<SummaryItem, "uid" | "createdAt" | "patientID">>;
 
 export interface SummaryStore {
-  readonly name: "dynamo";
+  readonly name: "dynamo" | "memory" | "sqlite";
   /** Where the items live, for logs and /health (the table). */
   readonly describe: string;
   put(item: SummaryItem): Promise<void>;
