@@ -8,7 +8,7 @@ The team's backend tasks doc first, Advik's Granola note second, the team diagra
 
 ## Done
 
-- [x] T1 Move the API onto the fixed JSON contract: `POST /ingest` runs lane 3 (`src/pipeline/runPipeline.ts`) and stores raw text, the LLM response and the picked-language translation encrypted; `GET /summary`, `GET /translate`, `GET /jobs/:id` serve the contract. Removed: checklist endpoints, `/languages`, caregiver fields, the old agents and verify modules. Page markers from pdf-parse stripped in `src/extract/text.ts`. Tests rewritten.
+- [x] T1 Move the API onto the fixed JSON contract: `POST /ingest` runs lane 3 (`src/pipeline/runPipeline.ts`) and stores the raw text and the LLM response (later reworked to the tasks doc's single plain item, and later still translation was taken out of ingestion, see B7); `GET /summary`, `GET /translate`, `GET /jobs/:id` serve the contract. Removed: checklist endpoints, `/languages`, caregiver fields, the old agents and verify modules. Page markers from pdf-parse stripped in `src/extract/text.ts`. Tests rewritten.
 - [x] T2 Demo clock as `DEMO_NOW` (`src/clock.ts`, pinned at boot) plus `scripts/sweep.ts`; `GET /audit` replaced by `scripts/show-audit.ts`; `/admin/*` removed.
 - [x] T3 SQL on MariaDB/RDS via `mysql2` with TLS against `certs/global-bundle.pem` (`src/db/index.ts` `MySqlDb`, `DATABASE_URL` and `MYSQL_*` resolution, `CREATE DATABASE IF NOT EXISTS`), one portable schema with per-dialect rewrites (`src/db/migrate.ts`), `scripts/fetch-rds-bundle.sh` (AWS step 1), `scripts/check-sql.ts`; Postgres removed.
 - [x] T4 Secrets Manager bootstrap (`src/secrets.ts`, `src/bootstrap.ts`): `hackhealth/secret` keys mapped to `MYSQL_*`, `DYNAMO_TABLE`, `DYNAMO_PK`; environment wins; names only in logs and `/health`.
@@ -31,6 +31,7 @@ The team's backend tasks doc first, Advik's Granola note second, the team diagra
 - [x] B4 `GET /llm-sumary?sum-id=` (and `/llm-summary`, `sum_id`): 200, 400, 404, 425, 410 at read time.
 - [x] B5 `GET /translation?lang=&sum_id=`: cache-first on `translations[lang]`, agent on a miss given the `llm-summary`, result saved; live Mandarin on Bedrock.
 - [x] B6 The purge refuses a `DEMO_NOW`-shifted run against DynamoDB or S3 (`DEMO_PURGE_ON_AWS=yes` to override on a throwaway account).
+- [x] B7 Ingest as the tasks doc describes it: `pdfToText` runs before the 202 and the text (pasted or extracted) is saved on the DynamoDB item as `raw-text`; the background job is the LLM call, saving `llm-summary` + `sum-id`, and the emails. Translation is out of ingestion entirely (no `language` on `POST /ingest`, no `language` column on `activeLinks`, no `translations` or `language` attribute written at ingest); it exists only as `GET /translation` on demand, and `POST /synthesize` when a request names a language.
 
 ## Open (for the team)
 

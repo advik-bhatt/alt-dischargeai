@@ -78,7 +78,7 @@ test/                 15 vitest files
 SQL, one portable schema (`src/db/migrations/0001_init.sql`), `VARCHAR` for every keyed column so MariaDB can index it, ISO timestamps from the app clock:
 
 - The team's `patientinfo` (read only, never seeded by the server): columns discovered at startup and mapped to `GET /patients`'s `ID, DOB, FirstName, LastName, ZipCode, email, phoneNumber, caregiverEmail, caregiverName` by name, ignoring case and underscores, with the id accepted as `ID`, `patientID` or `uid` (`src/db/repos/patients.ts`). The team's RDS table has no `caregiverName` column; that key is then `null`. `0002_patientinfo.*.sql` creates it with those columns only where it is missing.
-- `activeLinks(id AUTOINCREMENT, sumId UNIQUE, patientID FK, createdAt, expiresAt = createdAt + 30 days, status pending|ready|needs_review|failed|expired|purged, language, languages JSON, pdfKey, audioKey, lastViewedAt, emailedAt)`: the tasks doc's table, the `sumId` stored as-is.
+- `activeLinks(id AUTOINCREMENT, sumId UNIQUE, patientID FK, createdAt, expiresAt = createdAt + 30 days, status pending|ready|needs_review|failed|expired|purged, languages JSON (held, English first), pdfKey, audioKey, lastViewedAt, emailedAt)`: the tasks doc's table, the `sumId` stored as-is.
 - `jobs(id, sum_id FK, stage, input_kind, error, safety JSON, meta JSON, created_at, updated_at)`.
 - `audit_log(id AUTOINCREMENT, event, sum_id, actor provider|patient|system, at, details JSON)`; deletion receipts are rows with `event = deletion.receipt`.
 - `summaries(uid PK, item JSON, expires_at, created_at)`: the SQL twin of the DynamoDB table.
@@ -90,12 +90,12 @@ DynamoDB `discharge-summaries` (single hash key `uid`, TTL `expiresAt`), one pla
 
 ```
 { uid: "<sumId>", "sum-id": "<sumId>", patientID, "raw-text", "llm-summary": <AiOutput, English>,
-  translations: { "<lang>": <AiOutput> }, language, status: processing|ready|needs_review|failed,
+  status: processing|ready|needs_review|failed,
   createdAt: ISO, expiresAt: <epoch seconds>,
   inputKind: text|pdf|audio, pdfKey?, audioKey?, safety?, meta? }
 ```
 
-`raw-text` is written at ingest for pasted text and after extraction or transcription otherwise; `llm-summary` and the produced translations are written when the LLM returns. Teammates read these attributes directly and their own LLM agent may write `llm-summary` into the same item. Optional receipts (`AUDIT_SINK=dynamo`): `uid: "receipt#<sumId>#<receiptId>"`, no `expiresAt`, so TTL never removes them.
+`raw-text` is written before `POST /ingest` answers: the pasted text as it came, or the text `pdfToText` read from the PDF. Only audio gets it later, after transcription in the background. `llm-summary` is written when the LLM returns. There is no `translations` attribute and no `language` attribute at ingestion; the `translations` map (language code to translated JSON) appears the first time `GET /translation` translates the summary, and a language is never a property of the ingest. Teammates read these attributes directly and their own LLM agent may write `llm-summary` into the same item. Optional receipts (`AUDIT_SINK=dynamo`): `uid: "receipt#<sumId>#<receiptId>"`, no `expiresAt`, so TTL never removes them.
 
 ## The random path
 
@@ -103,9 +103,9 @@ DynamoDB `discharge-summaries` (single hash key `uid`, TTL `expiresAt`), one pla
 
 ## Lane 3 (the pipeline)
 
-`runPipeline({ rawText | transcript | audio, languages })`: speech to text when audio is given, simplify to the English contract, deterministic safety checks (every source medication with dose, frequency and duration present in the output; nothing in the output absent from the source), then one translation call per language with the translation check (names and doses verbatim, numbers preserved with a digit allowed for once/twice/three/four times, same ids, counts, statuses, tiers). A safety failure blocks translation and the record becomes `needs_review`. Providers: offline (fixtures by fingerprint for the five examples, rules otherwise), Bedrock Converse with tool-based JSON on the verified inference profiles, Anthropic direct optional.
+`runPipeline({ rawText | transcript | audio, languages })`: speech to text when audio is given, simplify to the English contract, deterministic safety checks (every source medication with dose, frequency and duration present in the output; nothing in the output absent from the source), then, only for languages named in `languages`, one translation call per language with the translation check (names and doses verbatim, numbers preserved with a digit allowed for once/twice/three/four times, same ids, counts, statuses, tiers). Ingestion passes no languages, so it stops after the safety checks; only `POST /synthesize` with a named language passes any. A safety failure blocks translation and the record becomes `needs_review`. Providers: offline (fixtures by fingerprint for the five examples, rules otherwise), Bedrock Converse with tool-based JSON on the verified inference profiles, Anthropic direct optional.
 
-Ingest stage machine, persisted in `jobs`: `received -> extracting (pdf: pdfToText) | transcribing (audio) -> simplifying -> stored -> emailing -> done`, or `-> needs_review` (no email), any stage `-> failed`. `emailLinks` sends the link to the patient's `email` and to `caregiverEmail` when present. `POST /synthesize { linkId }` re-runs `synthesizeLink` over the stored `raw-text`, replaces `llm-summary` and the produced translations, drops stale on-demand translations, updates `activeLinks.languages` and the status, and emails once it verifies (once only, `emailedAt`).
+`POST /ingest` does its first half before answering: validate, run `pdfToText` on a PDF (a PDF with no readable text is a 400 and nothing is saved), store the PDF, save `raw-text` on the DynamoDB item, add the `activeLinks` and `jobs` rows, answer 202. Its second half is the background job, persisted in `jobs`: `received -> (transcribing: audio only) -> simplifying -> stored -> emailing -> done`, or `-> needs_review` (no email), any stage `-> failed`. `simplifying` is the LLM call, awaited, plus the safety checks, then `llm-summary` and `sum-id` are saved on the item. The queue runs one job at a time in memory; after a restart unfinished jobs are re-queued and carry on from the text on the item, which works for pasted text and PDFs and fails for audio (its bytes were only in memory) with `restart_before_transcription`. `emailLinks` sends the link to the patient's `email` and to `caregiverEmail` when present. `POST /synthesize { linkId }` re-runs `synthesizeLink` over the stored `raw-text`, replaces `llm-summary`, clears translations made from the old English, updates `activeLinks.languages` and the status, and emails once it verifies (once only, `emailedAt`); it translates only into languages the request names.
 
 ## Patient reads (`src/routes/linkAccess.ts`)
 

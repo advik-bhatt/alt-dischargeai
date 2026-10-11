@@ -10,8 +10,10 @@ info:
     Provider endpoints need the `x-provider-key` header. Patient endpoints are authenticated by the
     unguessable 128-bit link id (22 base64url characters) and need no header.
 
-    Languages: any BCP-47 code or English language name the model supports is accepted wherever a
-    `language` is taken; tested offline with fixtures: en, es (Spanish), zh (Mandarin), ar (Arabic).
+    Translation is not part of ingestion: POST /ingest takes no language and ends with the English
+    summary. A language is taken only where a patient or provider asks for one (GET /translation and its
+    aliases, POST /synthesize); any BCP-47 code or English language name the model supports is accepted
+    there; tested offline with fixtures: en, es (Spanish), zh (Mandarin), ar (Arabic).
     Names recognised: English, Spanish, Mandarin/Chinese, Arabic, Portuguese, French, Haitian Creole,
     Russian, Korean, Vietnamese, Tagalog/Filipino, Hindi, Gujarati, Polish, Italian, German, Japanese,
     Urdu, Bengali, Persian/Farsi. Medication names and doses are never translated.
@@ -81,7 +83,7 @@ components:
         - $ref: "#/components/schemas/Patient"
         - type: object
           properties:
-            preferredLanguage: { type: string, nullable: true, description: BCP-47; the default language for POST /ingest }
+            preferredLanguage: { type: string, nullable: true, description: "BCP-47, when the patients table has such a column; informational" }
             activeLink:
               type: object
               nullable: true
@@ -182,7 +184,6 @@ components:
         link: { type: string, description: "${PATIENT_APP_URL}/s/${sumId}" }
         jobId: { type: string }
         expiresAt: { type: string, format: date-time }
-        language: { type: string, description: The provider-picked language (BCP-47) produced alongside English }
         statusUrl: { type: string, description: "/jobs/{jobId}" }
         stage: { type: string }
         linkId: { type: string, description: The same value as sumId (earlier name) }
@@ -202,6 +203,7 @@ components:
         readabilityGrade: { type: number }
         reason: { type: string, description: Present when passed is false, e.g. "safety_check_failed dropped=1 unsupported=0" }
         translations:
+          description: Present only when POST /synthesize was asked to translate; ingestion translates nothing.
           type: array
           items:
             type: object
@@ -213,15 +215,15 @@ components:
       type: object
       properties:
         jobId: { type: string }
-        stage: { type: string, enum: [received, extracting, transcribing, simplifying, stored, emailing, done, needs_review, failed] }
+        stage: { type: string, enum: [received, transcribing, simplifying, stored, emailing, done, needs_review, failed] }
         inputKind: { type: string, enum: [text, pdf, audio] }
         error: { type: string, nullable: true }
         safety: { nullable: true, allOf: [{ $ref: "#/components/schemas/SafetyResult" }] }
         verified: { type: boolean, nullable: true }
-        languages: { type: array, items: { type: string }, description: Languages stored for the link }
-        meta: { type: object, additionalProperties: true, description: provider, model, usage, llmMs, fixture, sourceChars, skipped, pdfPages, speechProvider }
-        linkIdHash: { type: string }
-        linkRef: { type: string, description: First 8 characters of the link hash, for logs }
+        languages: { type: array, items: { type: string }, description: "Languages the summary currently holds, English first; GET /translation adds to it" }
+        meta: { type: object, additionalProperties: true, description: "provider, model, usage, llmMs, fixture, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider" }
+        sumId: { type: string }
+        linkRef: { type: string, description: First 8 hex characters of the sumId's sha256, for logs }
         linkStatus: { type: string, nullable: true, enum: [pending, ready, needs_review, failed, expired, purged] }
         expiresAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
@@ -232,8 +234,8 @@ components:
       properties:
         linkId: { type: string, description: Re-run the pipeline over the raw text stored for this link and store the result }
         text: { type: string, description: Run the pipeline over this text and return the JSON without storing it }
-        language: { type: string, description: Primary target language (BCP-47 or name); English is always produced }
-        languages: { type: array, items: { type: string }, description: Extra target languages }
+        language: { type: string, description: "Optional: also translate into this language (BCP-47 or name); English is always produced. Ingestion never does this." }
+        languages: { type: array, items: { type: string }, description: Optional extra languages to translate into }
     SynthesizeResponse:
       type: object
       properties:
@@ -341,13 +343,15 @@ paths:
       description: |
         JSON body { data, type, patientID } (the tasks doc). type "text": data is the discharge summary text.
         type "pdf": data is the PDF as base64 (a data:application/pdf;base64, prefix is accepted); the PDF is
-        stored in S3 emrpdf-rh as <sumId>.pdf and converted with pdfToText. Any other type answers
+        converted with pdfToText and stored in S3 emrpdf-rh as <sumId>.pdf. Any other type answers
         400 { statusCode: 400, message: "type must be text or pdf" }.
         The random path (sumId) is stored in the SQL activeLinks table and is the DynamoDB uid of the summary
-        item; raw-text is saved on it. The response comes at once; then, asynchronously: the LLM call (plain
-        language at a 5th-grade level), deterministic safety checks, the provider-picked translation,
-        llm-summary + sum-id saved on the same item with expiresAt = now + 30 days, and the link emailed to the
-        patient's email and to caregiverEmail. A summary that fails the safety checks is held as needs_review
+        item. Before the response, a PDF is converted with pdfToText (a PDF with no readable text answers 400
+        unreadable_pdf and nothing is saved) and the text, pasted or extracted, is saved on the item as raw-text.
+        The response comes at once; then, asynchronously: the text goes to the LLM (plain language at a
+        5th-grade level) and the call is awaited, deterministic safety checks run, llm-summary + sum-id are saved
+        on the same item with expiresAt = now + 30 days, and the link is emailed to the patient's email and to
+        caregiverEmail. No translation happens during ingestion; GET /translation does that on demand. A summary that fails the safety checks is held as needs_review
         (423 for the patient, no email) until POST /synthesize re-runs it.
         The earlier multipart form (patientId + one of text, file, audio) is kept as an alias; audio comes from
         the architecture diagram and goes to S3 emraudio-rh.
@@ -362,10 +366,9 @@ paths:
                 data: { type: string, description: "The text (type text) or the PDF as base64 (type pdf)" }
                 type: { type: string, enum: [text, pdf] }
                 patientID: { oneOf: [{ type: string }, { type: integer }], description: "The patient's ID from GET /patients (text or number)" }
-                language: { type: string, description: "Optional provider-picked language (BCP-47 or a name such as Spanish). Default: the patient's preferred language, then English" }
             examples:
               text:
-                value: { type: text, patientID: pt-0001, language: es, data: "New medications:\n- Furosemide 40 mg by mouth once daily for swelling" }
+                value: { type: text, patientID: pt-0001, data: "New medications:\n- Furosemide 40 mg by mouth once daily for swelling" }
           multipart/form-data:
             schema:
               type: object
@@ -375,10 +378,9 @@ paths:
                 text: { type: string, description: Pasted EMR text }
                 file: { type: string, format: binary, description: PDF }
                 audio: { type: string, format: binary, description: "Dictation (wav, mp3, m4a, webm, ogg, flac); stored in the audio bucket as <sumId>.<ext>" }
-                language: { type: string, description: Provider-picked language (BCP-47 or name). Default is the patient's preferred language, then English }
       responses:
         "202": { description: ingestion started, content: { application/json: { schema: { $ref: "#/components/schemas/Accepted" } } } }
-        "400": { description: "type must be text or pdf, missing patientID or data, empty_input, multiple_inputs, invalid_language, or validation error", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: "type must be text or pdf, missing patientID or data, empty_input, multiple_inputs, unreadable_pdf, input_too_long, or validation error", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401": { description: Missing or wrong x-provider-key }
         "404": { description: patient_not_found }
         "413": { description: file_too_large }
@@ -396,12 +398,12 @@ paths:
     post:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: Run the AI pipeline (simplify, safety checks, translate) and get the fixed JSON per language
+      summary: Run the AI pipeline (simplify, safety checks) and get the fixed JSON; translates only into languages named in the request
       description: |
         `{ text, language?, languages? }` returns the JSON per language without storing anything.
         `{ linkId, language?, languages? }` re-runs the pipeline over the raw text stored for the link
         (after a prompt change, or to release a needs_review summary), replaces the stored LLM response
-        and translations, drops stale on-demand translations, and emails the patient once it verifies.
+        and clears translations made from the old English, and emails the patient once it verifies.
         Safety-check results come back under `safety`, never inside the per-language JSON.
       requestBody:
         required: true
