@@ -109,7 +109,7 @@ DynamoDB `discharge-summaries` (single hash key `uid`, TTL `expiresAt`), one pla
 
 ## Patient reads (`src/routes/linkAccess.ts`)
 
-`resolveSummary`: 400 malformed -> 404 unknown -> 410 purged -> 410 expired (clock comparison at read time; the link is marked and audited) -> 425 processing -> 423 needs_review -> 500 failed -> the item's `llm-summary`. `languageFor` (the tasks doc's `GET /translation`): English is the `llm-summary`; another language is served from `translations[lang]` (or its base language) when present, otherwise the translation agent runs once on the `llm-summary`, the result is checked, saved under `translations[lang]`, added to `activeLinks.languages`, and served. A failed check answers 422 and caches nothing.
+`resolveSummary`: the DynamoDB item is the source of truth (the tasks doc reads "from the dynamodb table"); the `activeLinks` row is used too when there is one, and wins for status and expiry. An item with no row, written straight into the table, is judged by its own `status` and `expiresAt`. Order: 400 malformed -> 404 neither a row nor an item -> 410 purged -> 410 expired (clock comparison at read time, independent of DynamoDB's lazy TTL; the link is marked and audited when there is one) -> 425 processing -> 423 needs_review -> 500 failed -> the item's `llm-summary`. `languageFor` (the tasks doc's `GET /translation`): English is the `llm-summary`; another language is served from `translations[lang]` (or its base language) when present, otherwise the translation agent runs once on the `llm-summary`, the result is checked, saved under `translations[lang]`, added to `activeLinks.languages`, and served. A failed check answers 422 and caches nothing.
 
 ## Day 30
 

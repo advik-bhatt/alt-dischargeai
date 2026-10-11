@@ -101,7 +101,7 @@ The server terminal prints two emails with the link: `To: harold.jennings@exampl
 
 ### Task 4: `GET /llm-sumary?sum-id=`
 
-Use the `sumId` from a task 3 response (patient routes need no key):
+These routes read the DynamoDB item, as the tasks doc says, and need no SQL row: an item written straight into the table (by a teammate's agent, or by hand) reads the same as one made by an ingest, judged by its own `status` and `expiresAt`. To try one without ingesting, `npm run sample-entry` (AWS credentials in the shell) writes a fake sample entry with the id `sampledischargesummary`: a hand-written English summary built from the repo's synthetic Example 1, one stored Spanish translation, and 30 days to live. `-- --reset` puts it back to that state after you have translated more languages into it, `-- --delete` removes it, and it never touches an item with that id that is not marked as the sample. Use `sampledischargesummary` below, or the `sumId` from a task 3 response (patient routes need no key):
 
 ```sh
 # The llm-summary saved on the DynamoDB item, with "sum-id", expiresAt, daysLeft and availableLanguages
@@ -243,6 +243,7 @@ Every curl in "Test the five tasks" was run as written against `npm run dev` on 
 | Bedrock Converse | `us.anthropic.claude-sonnet-4-6` and `us.anthropic.claude-haiku-4-5-20251001-v1:0` both answer the tool-based JSON call |
 | `POST /ingest` live, PDF for the first patient, after the change that moved PDF reading ahead of the 202 and took translation out | 202 after 2.1 s (it now reads the PDF, saves it to S3 and writes the item first); job `done` and verified on Sonnet 4.6, 2.9 s of model time. The `discharge-summaries` item held `uid`, `sum-id`, `patientID`, `raw-text`, `llm-summary`, `status: ready`, `createdAt`, `expiresAt`, plus `inputKind`, `pdfKey`, `safety`, `meta`, and no `translations` or `language`. The PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, AES256. My read of the item came after the model had finished, so the order "text saved before the model starts" is shown by the test that holds the model, not by this live read |
 | `GET /translation` live | the first Mandarin request translated in 3.5 s and created the `translations` map on the real item (the missing-map path), the second came from the item in 74 ms, and a third language (`es`) was added; the map then held `es` and `zh`, name and dose verbatim |
+| The read routes on a hand-written entry with no SQL row (`sampledischargesummary`, written into the real table with `npm run sample-entry`) | before the fix the server answered 404 for it, because the read path required a SQL link row first; after it, `GET /llm-sumary` 200 with the stored summary and 30 days left, `GET /translation?lang=es` from the entry, `zh` as a miss that was saved on the item and then a hit, `/llm-summary`, `/summary` and `/p/:token` 200, an unknown id 404. The Mandarin that test added was removed with `--reset`, so the entry is in its original state |
 | Cleanup | each live run's item and PDF were deleted by key and confirmed gone |
 | MariaDB 10.11 (local) | migrations, the pre-contract upgrade, `patientinfo` with an INT id and a DATE column, ingest and `activeLinks` rows: `MYSQL_TEST_URL='mysql://user:pw@127.0.0.1:3306/x?insecure=1' npm test` |
 
@@ -285,7 +286,7 @@ Copy `.env.example` to `.env`. Everything has a local default.
 | `EMAIL_QUEUE`, `SQS_QUEUE_URL` | `none`, unset | `sqs` enqueues instead of sending; `npm run email-worker` consumes |
 | `MAX_UPLOAD_BYTES` | 15 MB | PDF and audio limit (a base64 PDF in JSON may be about 1.4 times that) |
 
-Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `setup-s3`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
+Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sample-entry`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `setup-s3`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
 
 ## How the data lives and dies
 
@@ -315,7 +316,7 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test` on Node 24: 122 passing and 1 skipped (123 of 123 with `MYSQL_TEST_URL` set, which turns on the MariaDB upgrade test), 19 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), no keys. The files cover, in order: the nine `GET /patients` keys read from a `patientinfo` the server never seeds; JSON ingest of text and PDF, the 400 on a bad `type`, the `activeLinks` row, the DynamoDB item and the two emails; `GET /llm-sumary` (200, aliases, 400, 404, 425, 410); `GET /translation` (miss, hit, refused translation); `pdfToText`; upgrades from older databases; the RDS bundle; the DEMO_NOW purge guard; and the earlier routes, safety checks, stores, handlers and OpenAPI-versus-routes check.
+`npm test` on Node 24: 130 passing and 1 skipped (131 of 131 with `MYSQL_TEST_URL` set, which turns on the MariaDB upgrade test), 19 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), no keys. The files cover, in order: the nine `GET /patients` keys read from a `patientinfo` the server never seeds; JSON ingest of text and PDF, the 400 on a bad `type`, the `activeLinks` row, the DynamoDB item and the two emails; `GET /llm-sumary` (200, aliases, 400, 404, 425, 410); `GET /translation` (miss, hit, refused translation); `pdfToText`; upgrades from older databases; the RDS bundle; the DEMO_NOW purge guard; and the earlier routes, safety checks, stores, handlers and OpenAPI-versus-routes check.
 
 ## Limitations
 

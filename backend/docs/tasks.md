@@ -32,6 +32,7 @@ The team's backend tasks doc first, Advik's Granola note second, the team diagra
 - [x] B5 `GET /translation?lang=&sum_id=`: cache-first on `translations[lang]`, agent on a miss given the `llm-summary`, result saved; live Mandarin on Bedrock.
 - [x] B6 The purge refuses a `DEMO_NOW`-shifted run against DynamoDB or S3 (`DEMO_PURGE_ON_AWS=yes` to override on a throwaway account).
 - [x] B7 Ingest as the tasks doc describes it: `pdfToText` runs before the 202 and the text (pasted or extracted) is saved on the DynamoDB item as `raw-text`; the background job is the LLM call, saving `llm-summary` + `sum-id`, and the emails. Translation is out of ingestion entirely (no `language` on `POST /ingest`, no `language` column on `activeLinks`, no `translations` or `language` attribute written at ingest); it exists only as `GET /translation` on demand, and `POST /synthesize` when a request names a language.
+- [x] B8 The read routes work from the DynamoDB item alone: `GET /llm-sumary`, `GET /translation` and the aliases no longer require an `activeLinks` row (found when a hand-written entry in the real table answered 404). `npm run sample-entry` writes, resets or deletes one fake sample entry (`sampledischargesummary`) for trying them.
 
 ## Open (for the team)
 

@@ -26,7 +26,8 @@
     "live-ingest": "tsx scripts/live-ingest.ts",
     "verify-infra": "tsx scripts/verify-infra.ts",
     "make-fixture-pdf": "tsx scripts/make-fixture-pdf.ts",
-    "export-contract": "tsx scripts/export-contract.ts"
+    "export-contract": "tsx scripts/export-contract.ts",
+    "sample-entry": "tsx scripts/sample-entry.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

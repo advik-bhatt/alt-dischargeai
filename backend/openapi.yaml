@@ -419,7 +419,7 @@ paths:
   /llm-sumary:
     get:
       tags: [patient]
-      summary: "Task 4 of the backend tasks doc (spelled so): the llm-summary from the DynamoDB item for a summary id"
+      summary: "Task 4 of the backend tasks doc (spelled so): the llm-summary from the DynamoDB item for a summary id (no SQL row needed; the item's own status and expiresAt decide the answer when there is none)"
       parameters:
         - $ref: "#/components/parameters/sumIdHyphen"
         - $ref: "#/components/parameters/sumIdUnderscore"

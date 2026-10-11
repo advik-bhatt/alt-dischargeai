@@ -1,7 +1,7 @@
 import type { AiOutput } from "../contracts/aiOutput.js";
 import type { AppContext } from "../context.js";
 import { isSumIdShaped, logRef } from "../crypto/sumId.js";
-import type { ActiveLink } from "../db/repos/activeLinks.js";
+import type { ActiveLink, LinkStatus } from "../db/repos/activeLinks.js";
 import { languagesOf, type SummaryItem } from "../docstore/types.js";
 import { AppError, badRequest, gone, notFound, tooEarly } from "../errors.js";
 import { ENGLISH, languageName, normalizeLanguage } from "../pipeline/languages.js";
@@ -9,7 +9,8 @@ import { checkTranslation } from "../pipeline/safetyChecks.js";
 
 export interface SummaryAccess {
   sumId: string;
-  link: ActiveLink;
+  /** The SQL activeLinks row, when there is one. An item written straight into DynamoDB has none. */
+  link?: ActiveLink;
   item: SummaryItem;
   /** The LLM response, the English fixed JSON. */
   english: AiOutput;
@@ -26,49 +27,58 @@ export function sumIdFromQuery(query: Record<string, unknown>): unknown {
   return undefined;
 }
 
+const ITEM_STATUS_TO_LINK: Record<SummaryItem["status"], LinkStatus> = { processing: "pending", ready: "ready", needs_review: "needs_review", failed: "failed" };
+
 /**
- * Every patient read goes through here. Order matters:
- *   400 malformed id -> 404 unknown -> 410 purged / expired (checked against the app clock at read
- *   time, independently of the purge job) -> 425 still processing -> 423 needs clinician review ->
- *   500 failed -> the item with its llm-summary.
+ * Every patient read goes through here. The DynamoDB item is the source of truth, as the tasks doc
+ * has it ("gets llm generated summary based on the summary id from the dynamodb table"); the SQL
+ * activeLinks row is consulted too when there is one, and wins for status and expiry because the
+ * purge job and the ingest job keep it current. An item written straight into the table (by a
+ * teammate's agent, or by hand) has no row and is judged by its own `status` and `expiresAt`.
+ * Order matters:
+ *   400 malformed id -> 404 neither a link nor an item -> 410 purged / expired (checked against the
+ *   app clock at read time, independently of the purge job and of DynamoDB's lazy TTL) -> 425 still
+ *   processing -> 423 needs clinician review -> 500 failed -> the item with its llm-summary.
  * A link found expired here is marked expired and audited at once; the purge job deletes its data next.
  */
 export async function resolveSummary(ctx: AppContext, sumIdParam: unknown): Promise<SummaryAccess> {
   if (!isSumIdShaped(sumIdParam)) throw badRequest("invalid_link", "sum-id must be the 22-character id from the link (sum-id, sum_id or link)");
   const sumId = sumIdParam;
   const link = await ctx.activeLinks.getBySumId(sumId);
-  if (!link) throw notFound("link_not_found", "No discharge summary exists for this id");
+  const item = await ctx.summaries.get(sumId);
+  if (!link && !item) throw notFound("link_not_found", "No discharge summary exists for this id");
 
+  const status: LinkStatus = link ? link.status : ITEM_STATUS_TO_LINK[item!.status] ?? "pending";
+  const expiresIso = link ? link.expiresAt : new Date(item!.expiresAt * 1000).toISOString();
   const now = ctx.clock.now();
-  const expiresAt = new Date(link.expiresAt);
-  if (link.status === "purged") {
-    throw gone("link_purged", "This discharge summary was permanently deleted 30 days after it was created", { expiresAt: link.expiresAt });
+  const expiresAt = new Date(expiresIso);
+  if (status === "purged") {
+    throw gone("link_purged", "This discharge summary was permanently deleted 30 days after it was created", { expiresAt: expiresIso });
   }
-  if (link.status === "expired" || expiresAt.getTime() <= now.getTime()) {
-    if (link.status !== "expired") {
+  if (status === "expired" || expiresAt.getTime() <= now.getTime()) {
+    if (link && status !== "expired") {
       await ctx.activeLinks.setStatus(sumId, "expired");
       await ctx.audit.append({ event: "link.expired", sumId, actor: "system", at: ctx.clock.nowIso(), details: { detectedAt: "read" } });
     }
-    throw gone("link_expired", "This discharge summary expired 30 days after it was created", { expiresAt: link.expiresAt });
+    throw gone("link_expired", "This discharge summary expired 30 days after it was created", { expiresAt: expiresIso });
   }
 
-  const job = await ctx.jobs.latestForLink(sumId);
-  if (link.status === "pending" || (job && !["done", "needs_review", "failed"].includes(job.stage) && link.status !== "ready")) {
-    throw tooEarly("processing", "Your summary is still being prepared", { stage: job?.stage ?? "received", jobId: job?.id, expiresAt: link.expiresAt });
+  const job = link ? await ctx.jobs.latestForLink(sumId) : undefined;
+  if (status === "pending" || (job && !["done", "needs_review", "failed"].includes(job.stage) && status !== "ready")) {
+    throw tooEarly("processing", "Your summary is still being prepared", { stage: job?.stage ?? "received", jobId: job?.id, expiresAt: expiresIso });
   }
-  if (link.status === "needs_review") {
-    throw new AppError(423, "needs_review", "Your care team is reviewing this summary before it can be shown", { expiresAt: link.expiresAt });
+  if (status === "needs_review") {
+    throw new AppError(423, "needs_review", "Your care team is reviewing this summary before it can be shown", { expiresAt: expiresIso });
   }
-  if (link.status === "failed") {
-    throw new AppError(500, "processing_failed", "The summary could not be prepared", { expiresAt: link.expiresAt });
+  if (status === "failed") {
+    throw new AppError(500, "processing_failed", "The summary could not be prepared", { expiresAt: expiresIso });
   }
 
-  const item = await ctx.summaries.get(sumId);
   const english = item?.["llm-summary"];
-  if (!item || !english) throw tooEarly("processing", "Your summary is still being prepared", { stage: job?.stage ?? "stored", expiresAt: link.expiresAt });
+  if (!item || !english) throw tooEarly("processing", "Your summary is still being prepared", { stage: job?.stage ?? "stored", expiresAt: expiresIso });
 
   const daysLeft = Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
-  return { sumId, link, item, english, expiresAt: link.expiresAt, daysLeft };
+  return { sumId, link, item, english, expiresAt: expiresIso, daysLeft };
 }
 
 export interface LanguageResult {
@@ -120,7 +130,9 @@ export async function languageFor(ctx: AppContext, access: SummaryAccess, langua
     throw new AppError(422, "translation_rejected", "The translation changed a medication name, dose or number and was not accepted", { language: requested, issues: check.issues });
   }
   await ctx.summaries.setTranslation(sumId, requested, output);
-  const availableLanguages = await ctx.activeLinks.addLanguage(sumId, requested);
+  // The item is the source of truth for which languages exist; the SQL row (when there is one) is kept in step.
+  await ctx.activeLinks.addLanguage(sumId, requested);
+  const availableLanguages = languagesOf({ "llm-summary": english, translations: { ...(item.translations ?? {}), [requested]: output } });
   await ctx.audit.append({ event: "translation.created", sumId, actor: "patient", at: now, details: { language: requested, provider: result.provider, model: result.model, latencyMs: result.latencyMs } });
   return { language: requested, output, fromCache: false, availableLanguages };
 }

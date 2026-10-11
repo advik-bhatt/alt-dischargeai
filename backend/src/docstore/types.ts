@@ -30,6 +30,8 @@ export interface SummaryMeta {
   pdfPages?: number;
   pdfEngine?: string;
   transcript?: { provider: string; jobName?: string; latencyMs?: number };
+  /** Set on the hand-written sample entry (npm run sample-entry); the script only ever touches an item that carries it. */
+  sample?: boolean;
 }
 
 export interface SummaryItem {
