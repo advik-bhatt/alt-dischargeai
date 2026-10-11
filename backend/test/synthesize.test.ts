@@ -81,18 +81,19 @@ describe("POST /synthesize and GET /p/:token", () => {
     };
     const app = await createTestApp({ simplifier: flaky });
     try {
-      const { linkId, jobId } = await ingestText(app, exampleText("example-1-chf"), { language: "es" });
+      const { linkId, jobId } = await ingestText(app, exampleText("example-1-chf"));
       expect((await app.provider(request(app.app).get(`/jobs/${jobId}`))).body.stage).toBe("needs_review");
       expect((await request(app.app).get(`/p/${linkId}`)).status).toBe(423);
       expect(app.mailer.sent).toHaveLength(0);
 
       drop = false;
       const res = await app.provider(request(app.app).post("/synthesize")).send({ linkId });
-      expect(res.body).toMatchObject({ stored: true, status: "ready", verified: true, emailed: true, languages: ["en", "es"] });
+      expect(res.body).toMatchObject({ stored: true, status: "ready", verified: true, emailed: true, languages: ["en"] });
       expect(app.mailer.sent.map((m) => m.to).sort()).toEqual(["harold.jennings@example.test", "june.jennings@example.test"]);
       expect(app.mailer.sent.every((m) => m.text.includes(linkId))).toBe(true);
       const view = await request(app.app).get(`/p/${linkId}?language=es`);
       expect(view.status).toBe(200);
+      expect(view.body.fromCache).toBe(false);
       expect(view.body.medications.map((m: { name: string }) => m.name)).toContain("Apixaban");
 
       const again = await app.provider(request(app.app).post("/synthesize")).send({ linkId });

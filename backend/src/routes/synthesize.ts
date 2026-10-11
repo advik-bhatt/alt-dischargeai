@@ -18,12 +18,15 @@ const Body = z.object({
 /**
  * POST /synthesize (provider): the diagram's lane-3 entry point, so the teammate who owns the LLM
  * agent can re-run the pipeline after a prompt change without a new ingest.
- *   { text, language?, languages? }   runs jargon-to-plain-language -> safety checks -> translate over
- *                                     the given text and returns the fixed JSON per language (nothing stored)
- *   { sumId, language?, languages? }  re-runs the pipeline over the raw-text stored on the summary item,
- *                                     replaces llm-summary and translations, sets the status
- *                                     (ready | needs_review) and emails the patient and caregiver if
- *                                     the link had not been sent yet (`linkId` is accepted for `sumId`)
+ *   { text, language?, languages? }   runs jargon-to-plain-language -> safety checks over the given text
+ *                                     and returns the fixed JSON (nothing stored); translates only into
+ *                                     the languages named in the request
+ *   { sumId, language?, languages? }  re-runs the LLM step over the raw-text stored on the summary item,
+ *                                     replaces llm-summary, clears translations made from the old
+ *                                     English, sets the status (ready | needs_review) and emails the
+ *                                     patient and caregiver if the link had not been sent yet
+ *                                     (`linkId` is accepted for `sumId`)
+ * Ingestion itself never translates; this route does so only when the caller names languages.
  * Safety-check results come back under `safety`, next to the per-language JSON, never inside it.
  */
 export function synthesizeRouter(ctx: AppContext): Router {
@@ -39,7 +42,7 @@ export function synthesizeRouter(ctx: AppContext): Router {
     const sumId = body.sumId ?? body.linkId;
     if (sumId) {
       if (!isSumIdShaped(sumId)) throw badRequest("invalid_link", "sumId must be the 22-character id returned by POST /ingest");
-      let link = await ctx.activeLinks.getBySumId(sumId);
+      const link = await ctx.activeLinks.getBySumId(sumId);
       if (!link) throw notFound("link_not_found", "No summary with that id");
       if (link.status === "purged") throw gone("link_purged", "This summary was permanently deleted after 30 days");
       if (link.status === "expired" || new Date(link.expiresAt).getTime() <= ctx.clock.now().getTime()) {
@@ -51,13 +54,10 @@ export function synthesizeRouter(ctx: AppContext): Router {
       }
       const item = await ctx.summaries.get(sumId);
       const text = item?.["raw-text"];
-      if (!item || !text) throw new AppError(409, "no_source_text", "No clinician text is stored for this summary yet (the ingest job stores it after extraction)");
+      if (!item || !text) throw new AppError(409, "no_source_text", "No clinician text is stored for this summary yet (an audio ingest stores it after transcription)");
 
-      if (body.language) {
-        await ctx.activeLinks.setLanguage(sumId, normalizeLanguage(body.language)!);
-        link = (await ctx.activeLinks.getBySumId(sumId))!;
-      }
-      const run = await synthesizeLink(ctx, link, text, item.inputKind, extras);
+      const requested = resolveLanguages(body.language, extras).languages;
+      const run = await synthesizeLink(ctx, link, text, item.inputKind, requested);
       let emailed = !!link.emailedAt;
       if (run.verified && !link.emailedAt) {
         await emailLinks(ctx, link);

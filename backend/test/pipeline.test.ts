@@ -22,7 +22,7 @@ describe("lane 3 pipeline (offline providers)", () => {
     expect(r.perLanguage.es.steps[0].text).toMatch(/Tome Furosemide 40 mg/);
     expect(r.perLanguage.zh.medications.map((m) => `${m.name}|${m.dose}`)).toEqual(r.perLanguage.en.medications.map((m) => `${m.name}|${m.dose}`));
     expect(r.safety.passed).toBe(true);
-    expect(r.safety.translations.map((t) => [t.language, t.passed])).toEqual([
+    expect((r.safety.translations ?? []).map((t) => [t.language, t.passed])).toEqual([
       ["es", true],
       ["zh", true],
     ]);

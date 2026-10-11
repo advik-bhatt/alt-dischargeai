@@ -5,7 +5,6 @@ import type { Db } from "../index.js";
 
 export type JobStage =
   | "received"
-  | "extracting"
   | "transcribing"
   | "simplifying"
   | "stored"

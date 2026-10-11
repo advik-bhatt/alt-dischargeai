@@ -10,7 +10,6 @@ export interface ActiveLinkRow {
   createdAt: string;
   expiresAt: string;
   status: LinkStatus;
-  language: string;
   languages: string;
   pdfKey: string | null;
   audioKey: string | null;
@@ -26,8 +25,6 @@ export interface ActiveLink {
   createdAt: string;
   expiresAt: string;
   status: LinkStatus;
-  /** The language the provider picked at ingest (BCP-47). */
-  language: string;
   /** Languages the summary item currently holds, English first. */
   languages: string[];
   /** Object key of the PDF in the PDF bucket (emrpdf-rh), when the input was a PDF. */
@@ -55,7 +52,6 @@ function toRecord(r: ActiveLinkRow): ActiveLink {
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
     status: r.status,
-    language: r.language,
     languages: parseLanguages(r.languages),
     pdfKey: r.pdfKey,
     audioKey: r.audioKey,
@@ -72,15 +68,14 @@ export class ActiveLinksRepo {
     patientID: string;
     createdAt: string;
     expiresAt: string;
-    language: string;
     languages?: string[];
     pdfKey?: string | null;
     audioKey?: string | null;
   }): Promise<ActiveLink> {
     await this.db.run(
-      `INSERT INTO activeLinks (sumId, patientID, createdAt, expiresAt, status, language, languages, pdfKey, audioKey)
-       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
-      [input.sumId, input.patientID, input.createdAt, input.expiresAt, input.language, JSON.stringify(input.languages ?? []), input.pdfKey ?? null, input.audioKey ?? null],
+      `INSERT INTO activeLinks (sumId, patientID, createdAt, expiresAt, status, languages, pdfKey, audioKey)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [input.sumId, input.patientID, input.createdAt, input.expiresAt, JSON.stringify(input.languages ?? []), input.pdfKey ?? null, input.audioKey ?? null],
     );
     return (await this.getBySumId(input.sumId))!;
   }
@@ -92,11 +87,6 @@ export class ActiveLinksRepo {
 
   async setStatus(sumId: string, status: LinkStatus): Promise<void> {
     await this.db.run("UPDATE activeLinks SET status = ? WHERE sumId = ?", [status, sumId]);
-  }
-
-  /** The provider-picked language (a re-run through POST /synthesize may change it). */
-  async setLanguage(sumId: string, language: string): Promise<void> {
-    await this.db.run("UPDATE activeLinks SET language = ? WHERE sumId = ?", [language, sumId]);
   }
 
   async setLanguages(sumId: string, languages: string[]): Promise<void> {

@@ -3,18 +3,19 @@ import type { AppContext } from "../context.js";
 import { logRef } from "../crypto/sumId.js";
 import type { ActiveLink } from "../db/repos/activeLinks.js";
 import type { JobStage } from "../db/repos/jobs.js";
-import type { InputKind, SummaryMeta } from "../docstore/types.js";
+import type { InputKind, SummaryPatch } from "../docstore/types.js";
 import { caregiverLinkEmail, patientLinkEmail, type LinkEmail } from "../email/templates.js";
-import { pdfToText } from "../extract/pdfToText.js";
 import { normalizeText } from "../extract/text.js";
-import { resolveLanguages } from "./languages.js";
 import { runPipeline, type PipelineRun } from "./runPipeline.js";
 
-/** What POST /ingest hands to the pipeline. Kept in memory until `raw-text` exists on the item. */
+/**
+ * What POST /ingest hands to the background job. Only audio needs it: pasted text and PDFs already
+ * have their text on the summary item (`raw-text`) before the 202 goes out, so the job reads it from
+ * there, and a restart loses nothing for them.
+ */
 export interface PendingInput {
   sumId: string;
   kind: InputKind;
-  text?: string;
   file?: { buffer: Buffer; mimeType: string; fileName?: string };
 }
 
@@ -24,13 +25,13 @@ export function epochSeconds(iso: string): number {
 
 /**
  * The team contract's async steps after the 202, as a persisted stage machine:
- *   received -> extracting (pdf: pdfToText) | transcribing (audio) -> simplifying -> stored -> emailing -> done
- *                                                                                    \-> needs_review (safety checks failed; no email yet)
+ *   received -> (transcribing: audio only) -> simplifying -> stored -> emailing -> done
+ *                                                  \-> needs_review (safety checks failed; no email)
  *   any stage --error--> failed
- * "simplifying" is lane 3 end to end: jargon to plain language -> safety checks -> translate into
- * the language the provider picked. The raw text goes on the summary item as `raw-text`; when the
- * LLM returns, `llm-summary` and `sum-id` are saved on the same item; then the link is emailed to
- * the patient and to the caregiverEmail.
+ * By the time the job runs, the clinician text is already on the summary item as `raw-text`: the
+ * route stored pasted text as it came and ran pdfToText on a PDF before answering. The job sends that
+ * text to the LLM and waits, saves `llm-summary` and `sum-id` on the same item, then emails the link
+ * to the patient and the caregiverEmail. Nothing here translates; GET /translation does that on demand.
  */
 export async function runIngestJob(ctx: AppContext, jobId: string, pending?: PendingInput): Promise<void> {
   const { jobs, activeLinks, summaries, audit, clock, log } = ctx;
@@ -52,48 +53,27 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
     const item = await summaries.get(job.sumId);
     if (!item) throw new Error("summary item missing from the document store");
 
-    // 1. The clinician text: already on the item (pasted text, or a restart), or extracted now.
+    // 1. The clinician text is on the item already, except for audio, which is transcribed here
+    //    (speech to text is too slow to wait for before answering) and then saved the same way.
     let text = item["raw-text"] ?? "";
     if (!text) {
-      if (!pending) throw new Error("restart_before_extraction: the input was lost when the process restarted");
-      const meta: SummaryMeta = { ...(item.meta ?? {}) };
-      if (pending.kind === "text") {
-        text = normalizeText(pending.text ?? "");
-      } else if (pending.kind === "pdf") {
-        await setStage("extracting");
-        const r = await pdfToText(pending.file!.buffer);
-        meta.pdfPages = r.pages;
-        meta.pdfEngine = r.engine;
-        await jobs.mergeMeta(jobId, { pdfPages: r.pages, pdfEngine: r.engine }, clock.nowIso());
-        text = r.text;
-      } else {
-        await setStage("transcribing");
-        // Transcribe Medical reads the clip from the bucket by key; with the local twin it gets the bytes.
-        const r = await ctx.speechToText.transcribe({ audio: pending.file!.buffer, mimeType: pending.file!.mimeType, fileName: pending.file!.fileName, audioKey: ctx.audio.name === "s3" ? (link.audioKey ?? undefined) : undefined });
-        meta.transcript = { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs };
-        await jobs.mergeMeta(jobId, { speechProvider: r.provider, transcribeJobName: r.jobName, transcribeMs: r.latencyMs }, clock.nowIso());
-        text = normalizeText(r.transcript);
-      }
-      if (!text) throw new Error("empty_input_after_extraction");
-      await summaries.update(job.sumId, { "raw-text": text, meta });
+      if (job.inputKind !== "audio" || !pending?.file) throw new Error("restart_before_transcription: the audio was lost when the process restarted");
+      await setStage("transcribing");
+      // Transcribe Medical reads the clip from the bucket by key; with the local twin it gets the bytes.
+      const r = await ctx.speechToText.transcribe({ audio: pending.file.buffer, mimeType: pending.file.mimeType, fileName: pending.file.fileName, audioKey: ctx.audio.name === "s3" ? (link.audioKey ?? undefined) : undefined });
+      await jobs.mergeMeta(jobId, { speechProvider: r.provider, transcribeJobName: r.jobName, transcribeMs: r.latencyMs }, clock.nowIso());
+      text = normalizeText(r.transcript);
+      if (!text) throw new Error("empty_input_after_transcription");
+      await summaries.update(job.sumId, { "raw-text": text, meta: { ...(item.meta ?? {}), transcript: { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs } } });
     }
 
-    // 2. Lane 3: simplify -> safety checks -> translate into the picked language. Saved on the item.
+    // 2. Send the text to the LLM, wait, run the safety checks, save the result on the item.
     await setStage("simplifying");
     const run = await synthesizeLink(ctx, link, text, job.inputKind);
     await jobs.setSafety(jobId, run.safety, clock.nowIso());
     await jobs.mergeMeta(
       jobId,
-      {
-        provider: run.meta.provider,
-        model: run.meta.model,
-        usage: run.meta.usage,
-        llmMs: run.meta.latencyMs,
-        fixture: run.meta.fixture,
-        sourceChars: run.meta.sourceChars,
-        languages: Object.keys(run.perLanguage),
-        skipped: run.meta.skipped,
-      },
+      { provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, llmMs: run.meta.latencyMs, fixture: run.meta.fixture, sourceChars: run.meta.sourceChars },
       clock.nowIso(),
     );
     await setStage("stored");
@@ -118,16 +98,15 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
 }
 
 /**
- * Runs lane 3 over the clinician text for a link and saves the result on the summary item:
- * `llm-summary` (the English fixed JSON), `sum-id`, `translations` (one entry per produced
- * language), `status`, the safety result and the run metadata. Shared by the ingest job and
- * POST /synthesize { sumId }. Translations made on demand earlier were made from the previous
- * English, so the map is replaced; the cache-first rule rebuilds them when a patient asks.
- * Throws on a provider failure; the caller marks the job.
+ * Sends the clinician text for a link through the LLM and the safety checks and saves the result on
+ * the summary item: `llm-summary` (the English fixed JSON), `sum-id`, `status`, the safety result and
+ * the run metadata. Shared by the ingest job and POST /synthesize { sumId }. No translation unless
+ * `languages` is passed (only POST /synthesize does, on explicit request); translations made on demand
+ * earlier were made from the previous English, so a re-run clears them and GET /translation rebuilds
+ * them when a patient asks. Throws on a provider failure; the caller marks the job.
  */
-export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: string, inputKind: InputKind, extraLanguages: string[] = []): Promise<PipelineRun> {
+export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: string, inputKind: InputKind, languages: string[] = []): Promise<PipelineRun> {
   const { activeLinks, summaries, clock } = ctx;
-  const { languages } = resolveLanguages(link.language, extraLanguages);
 
   const run = await runPipeline(
     { rawText: text, languages },
@@ -138,16 +117,17 @@ export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: st
   for (const [lang, output] of Object.entries(run.perLanguage)) if (lang !== "en") translations[lang] = output;
   const current = await summaries.get(link.sumId);
   const status = run.verified ? "ready" : "needs_review";
-  await summaries.update(link.sumId, {
+  const patch: SummaryPatch = {
     "llm-summary": run.perLanguage.en,
     "sum-id": link.sumId,
-    translations,
     status,
-    language: link.language,
     inputKind,
     safety: run.safety,
-    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, fixture: run.meta.fixture, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars, skipped: run.meta.skipped },
-  });
+    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, fixture: run.meta.fixture, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
+  };
+  // Only touch `translations` when there is something to replace or to write.
+  if (Object.keys(translations).length || Object.keys(current?.translations ?? {}).length) patch.translations = translations;
+  await summaries.update(link.sumId, patch);
   const produced = ["en", ...Object.keys(translations)];
   await activeLinks.setLanguages(link.sumId, produced);
   await activeLinks.setStatus(link.sumId, status);

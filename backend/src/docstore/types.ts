@@ -8,8 +8,8 @@ import type { LlmUsage, PipelineSafety } from "../pipeline/types.js";
  *   patientID     the patient the summary belongs to
  *   raw-text      the clinician text (pasted, extracted from the PDF, or the transcript)
  *   llm-summary   the LLM's plain-language JSON (the fixed AiOutput in English)
- *   translations  map keyed by language code, each the translated AiOutput
- *   language      the language the provider picked at ingest
+ *   translations  map keyed by language code, each the translated AiOutput; absent until GET /translation
+ *                 first translates the summary (translation is not part of ingestion)
  *   status        processing | ready | needs_review | failed
  *   createdAt     ISO-8601
  *   expiresAt     epoch seconds, the table's TTL attribute (createdAt + 30 days)
@@ -30,7 +30,6 @@ export interface SummaryMeta {
   pdfPages?: number;
   pdfEngine?: string;
   transcript?: { provider: string; jobName?: string; latencyMs?: number };
-  skipped?: { language: string; reason: string }[];
 }
 
 export interface SummaryItem {
@@ -39,8 +38,7 @@ export interface SummaryItem {
   patientID: string;
   "raw-text"?: string;
   "llm-summary"?: AiOutput;
-  translations: Record<string, AiOutput>;
-  language: string;
+  translations?: Record<string, AiOutput>;
   status: SummaryStatus;
   createdAt: string;
   expiresAt: number;

@@ -1,6 +1,7 @@
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OfflineSimplifier } from "../src/pipeline/simplify.js";
+import { OfflineTranslator } from "../src/pipeline/translate.js";
 import { AI_KEYS, LLM_SUMMARY_KEYS, PATIENT_EN, PATIENT_ES, PATIENT_NO_CAREGIVER, VIEW_KEYS, createTestApp, exampleText, ingestText, type TestApp } from "./helpers.js";
 
 describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", () => {
@@ -20,7 +21,7 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     }
   });
 
-  it("rejects a missing patientID, empty data, an unknown patient and an unknown language", async () => {
+  it("rejects a missing patientID, empty data and an unknown patient", async () => {
     const noPatient = await t.provider(request(t.app).post("/ingest")).send({ data: "Furosemide 40 mg daily", type: "text" });
     expect(noPatient.status).toBe(400);
     expect(noPatient.body).toMatchObject({ statusCode: 400, error: "missing_patientID" });
@@ -29,9 +30,20 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     const unknown = await t.provider(request(t.app).post("/ingest")).send({ data: "Furosemide 40 mg daily", type: "text", patientID: "nope" });
     expect(unknown.status).toBe(404);
     expect(unknown.body).toMatchObject({ statusCode: 404, error: "patient_not_found" });
-    const lang = await t.provider(request(t.app).post("/ingest")).send({ data: "Furosemide 40 mg daily", type: "text", patientID: PATIENT_EN, language: "klingon" });
-    expect(lang.status).toBe(400);
-    expect(lang.body.error).toBe("invalid_language");
+  });
+
+  it("takes no language: a stray `language` is ignored, not validated, and nothing is translated", async () => {
+    const app = await createTestApp();
+    try {
+      const res = await app.provider(request(app.app).post("/ingest")).send({ data: exampleText("example-1-chf"), type: "text", patientID: PATIENT_EN, language: "klingon" });
+      expect(res.status).toBe(202);
+      expect(res.body).not.toHaveProperty("language");
+      await app.ctx.queue.onIdle();
+      expect((await app.ctx.summaries.get(res.body.sumId))?.translations).toBeUndefined();
+      expect((await request(app.app).get(`/llm-sumary?sum-id=${res.body.sumId}`)).body.availableLanguages).toEqual(["en"]);
+    } finally {
+      await app.close();
+    }
   });
 
   it("answers 202 'ingestion started' at once, writes the activeLinks row, saves raw-text then llm-summary + sum-id on one item, emails patient and caregiver", async () => {
@@ -43,7 +55,7 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     expect(res.body.linkId).toBe(res.body.sumId);
     expect(res.body.link).toBe(`http://localhost:5173/s/${res.body.sumId}`);
     expect(res.body.statusUrl).toBe(`/jobs/${res.body.jobId}`);
-    expect(res.body.language).toBe("en");
+    expect(res.body).not.toHaveProperty("language");
     const created = new Date(res.body.expiresAt).getTime() - t.ctx.clock.now().getTime();
     expect(Math.round(created / (24 * 3600 * 1000))).toBe(30);
     const sumId = res.body.sumId as string;
@@ -53,6 +65,8 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     expect(row).toMatchObject({ sumId, patientID: PATIENT_EN, expiresAt: res.body.expiresAt });
     const early = await request(t.app).get(`/llm-sumary?sum-id=${sumId}`);
     expect([425, 200]).toContain(early.status);
+    // The text is on the DynamoDB item as `raw-text` already; only the LLM response is still to come.
+    expect((await t.ctx.summaries.get(sumId))?.["raw-text"]).toContain("Furosemide 40 mg");
     await t.ctx.queue.onIdle();
 
     const job = await t.provider(request(t.app).get(`/jobs/${res.body.jobId}`));
@@ -63,10 +77,13 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     expect(job.body.safety.passed).toBe(true);
     expect(job.body.meta.fixture).toBe("example-1");
     expect(job.body.languages).toEqual(["en"]);
+    expect(job.body.safety).not.toHaveProperty("translations");
+    expect(job.body.meta).not.toHaveProperty("skipped");
     expect(JSON.stringify(job.body)).not.toContain("72-year-old");
 
     const link = await t.ctx.activeLinks.getBySumId(sumId);
-    expect(link).toMatchObject({ sumId, patientID: PATIENT_EN, status: "ready", language: "en", languages: ["en"] });
+    expect(link).toMatchObject({ sumId, patientID: PATIENT_EN, status: "ready", languages: ["en"] });
+    expect(link).not.toHaveProperty("language");
     expect(link?.emailedAt).toBeTruthy();
 
     // One item per summary, readable attributes, the contract's names.
@@ -78,7 +95,8 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     expect(item!["raw-text"]).toContain("Furosemide 40 mg");
     expect(item!["llm-summary"]?.medications.map((m) => m.name)).toContain("Furosemide");
     expect(Object.keys(item!["llm-summary"]!).sort()).toEqual([...AI_KEYS].sort());
-    expect(item!.translations).toEqual({});
+    expect(item!.translations).toBeUndefined();
+    expect(item).not.toHaveProperty("language");
     expect(item!.status).toBe("ready");
     expect(item!.expiresAt).toBe(Math.floor(new Date(res.body.expiresAt).getTime() / 1000));
 
@@ -115,27 +133,28 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     expect(sent[0].text).toContain(link);
   });
 
-  it("produces the provider-picked language at ingest and GET /translation serves it from the item", async () => {
-    const { sumId, language } = await ingestText(t, exampleText("example-1-chf"), { language: "Spanish" }, PATIENT_ES);
-    expect(language).toBe("es");
-    const item = await t.ctx.summaries.get(sumId);
-    expect(Object.keys(item!.translations)).toEqual(["es"]);
-    const en = await request(t.app).get(`/llm-sumary?sum-id=${sumId}`);
-    expect(en.body.availableLanguages).toEqual(["en", "es"]);
-    const es = await request(t.app).get(`/translation?lang=es&sum_id=${sumId}`);
-    expect(es.status).toBe(200);
-    expect(es.body.fromCache).toBe(true);
-    expect(es.body.lang).toBe("es");
-    expect(es.body.translation.steps[0].text).toMatch(/^Tome Furosemide 40 mg/);
-    const viaAlias = await request(t.app).get(`/translate?link=${sumId}&language=Spanish`);
-    expect(viaAlias.body.steps).toEqual(es.body.translation.steps);
-  });
+  it("ingestion never calls the translation agent, even for a patient who prefers Spanish; GET /translation does, on demand", async () => {
+    const translator = new OfflineTranslator();
+    const spy = vi.spyOn(translator, "translate");
+    const app = await createTestApp({ translator });
+    try {
+      const { sumId } = await ingestText(app, exampleText("example-1-chf"), {}, PATIENT_ES);
+      expect(spy).not.toHaveBeenCalled();
+      expect((await app.ctx.summaries.get(sumId))?.translations).toBeUndefined();
+      expect((await request(app.app).get(`/llm-sumary?sum-id=${sumId}`)).body.availableLanguages).toEqual(["en"]);
 
-  it("defaults the language to the patient's preference", async () => {
-    const { language, sumId } = await ingestText(t, exampleText("example-2-sepsis-uti"), {}, PATIENT_ES);
-    expect(language).toBe("es");
-    const en = await request(t.app).get(`/llm-sumary?sum-id=${sumId}`);
-    expect(en.body.availableLanguages).toEqual(["en", "es"]);
+      const first = await request(app.app).get(`/translation?lang=es&sum_id=${sumId}`);
+      expect(first.status).toBe(200);
+      expect(first.body.fromCache).toBe(false);
+      expect(first.body.translation.steps[0].text).toMatch(/^Tome Furosemide 40 mg/);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const second = await request(app.app).get(`/translation?lang=es&sum_id=${sumId}`);
+      expect(second.body.fromCache).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(Object.keys((await app.ctx.summaries.get(sumId))?.translations ?? {})).toEqual(["es"]);
+    } finally {
+      await app.close();
+    }
   });
 
   it("keeps the multipart form as an alias (patientId + text)", async () => {
@@ -193,13 +212,12 @@ describe("POST /ingest (JSON, team contract) -> 202 -> job -> GET /llm-sumary", 
     };
     const blocked = await createTestApp({ simplifier: dropping });
     try {
-      const { sumId, jobId } = await ingestText(blocked, exampleText("example-1-chf"), { language: "es" });
+      const { sumId, jobId } = await ingestText(blocked, exampleText("example-1-chf"));
       const job = await blocked.provider(request(blocked.app).get(`/jobs/${jobId}`));
       expect(job.body.stage).toBe("needs_review");
       expect(job.body.verified).toBe(false);
       expect(job.body.safety.dropped).toEqual([expect.objectContaining({ name: "Metformin", missing: ["medication"] })]);
       expect(job.body.safety.reason).toBe("safety_check_failed dropped=1 unsupported=0");
-      expect(job.body.meta.skipped).toEqual([{ language: "es", reason: "blocked_by_safety_checks" }]);
       expect(blocked.mailer.sent).toHaveLength(0);
       expect((await blocked.ctx.summaries.get(sumId))?.status).toBe("needs_review");
       const res = await request(blocked.app).get(`/llm-sumary?sum-id=${sumId}`);

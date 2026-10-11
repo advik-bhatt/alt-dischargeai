@@ -71,7 +71,8 @@ export interface Translator {
 
 /** What runPipeline returns and what the record stores. */
 export interface PipelineSafety extends SafetyResult {
-  translations: TranslationCheck[];
+  /** The translation checks, present only when languages were explicitly requested (POST /synthesize). Ingestion translates nothing. */
+  translations?: TranslationCheck[];
 }
 
 export interface PipelineMeta {

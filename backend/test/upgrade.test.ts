@@ -4,7 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { parseDatabaseUrl, splitStatements } from "../src/db/index.js";
+import { parseDatabaseUrl, splitStatements, type Db } from "../src/db/index.js";
 import { toDialect } from "../src/db/migrate.js";
 import { createTestApp } from "./helpers.js";
 
@@ -32,9 +32,22 @@ const TEAM_TABLE = [
 
 const TEXT = "New medications:\n- Furosemide 40 mg by mouth once daily for swelling";
 
+/** The columns of activeLinks, on either engine. */
+async function activeLinkColumns(db: Db): Promise<string[]> {
+  const rows =
+    db.dialect === "sqlite"
+      ? await db.all<{ name: string }>("PRAGMA table_info(activeLinks)")
+      : await db.all<{ name: string }>("SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activeLinks'");
+  return rows.map((r) => r.name);
+}
+
 async function expectUpgraded(env: Record<string, string>, count: (sql: string) => Promise<number>) {
   const app = await createTestApp({ seed: false, env });
   try {
+    // Translation is not part of ingestion: the ingest-time `language` column is gone, `languages` (held) stays.
+    const columns = await activeLinkColumns(app.ctx.db);
+    expect(columns).not.toContain("language");
+    expect(columns).toContain("languages");
     // The team's two rows, nothing else; INT ids stay numbers, DATE comes back as YYYY-MM-DD.
     const list = await app.provider(request(app.app).get("/patients"));
     expect(list.body.patients.map((p: { ID: number; DOB: string }) => [p.ID, p.DOB])).toEqual([
@@ -64,6 +77,15 @@ async function expectUpgraded(env: Record<string, string>, count: (sql: string) 
 }
 
 describe("upgrading a database made by the pre-contract backend", () => {
+  it("a fresh database ends with the contract's activeLinks columns and no ingest-time language", async () => {
+    const app = await createTestApp({ seed: false });
+    try {
+      expect((await activeLinkColumns(app.ctx.db)).sort()).toEqual(["audioKey", "createdAt", "emailedAt", "expiresAt", "id", "languages", "lastViewedAt", "patientID", "pdfKey", "status", "sumId"]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("SQLite: renames the old tables, keeps their rows, builds the current schema", async () => {
     const file = join(mkdtempSync(join(tmpdir(), "dischargeai-precontract-")), "old.db");
     const db = new Database(file);

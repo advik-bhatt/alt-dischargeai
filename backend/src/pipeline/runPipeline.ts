@@ -6,7 +6,9 @@ import type { PipelineResult, Simplifier, SpeechToText, Translator } from "./typ
 
 /**
  * Lane 3 composed: (audio -> Speech to text -> transcript) and/or pasted text -> Jargon to plain
- * language -> Safety checks -> verified steps -> Translate -> JSON per language.
+ * language -> Safety checks -> verified steps -> Translate (only for languages asked for) -> JSON per
+ * language. Ingestion asks for none: it ends with the English summary. Translation happens on demand
+ * (GET /translation) or when POST /synthesize is given languages explicitly.
  * Person C owns the four modules; this file only wires them in the diagram's order.
  */
 export interface PipelineDeps {
@@ -24,7 +26,7 @@ export interface PipelineInput {
   transcript?: string;
   /** Audio to transcribe first (POST /ingest with an audio file). */
   audio?: { audio: Buffer; mimeType: string; fileName?: string; audioKey?: string };
-  /** BCP-47 codes; English is always produced and comes first. */
+  /** BCP-47 codes to translate into; English is always produced and comes first. Empty for ingestion. */
   languages: string[];
 }
 
@@ -84,7 +86,7 @@ export async function runPipeline(input: PipelineInput, deps: PipelineDeps): Pro
 
   return {
     perLanguage,
-    safety: { ...safety, translations },
+    safety: translations.length ? { ...safety, translations } : safety,
     verified: safety.passed,
     sourceText,
     transcript,

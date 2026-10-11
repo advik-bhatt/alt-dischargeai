@@ -67,7 +67,7 @@ describe("30-day expiry at read time, the purge job and its deletion receipts", 
 
   it("purge deletes every summary item, the PDF and the audio clip, writes one receipt per deletion, marks the links purged and clears the active link", async () => {
     const before = await t.ctx.summaries.get(sumId);
-    expect(Object.keys(before!.translations)).toEqual(["es"]);
+    expect(Object.keys(before!.translations ?? {})).toEqual(["es"]);
     expect(before!["llm-summary"]).toBeTruthy();
 
     const report = await t.ctx.purge();
@@ -127,7 +127,7 @@ describe("30-day expiry at read time, the purge job and its deletion receipts", 
 
   it("the backstop sweep deletes an expired item that has no activeLinks row, with a receipt", async () => {
     const orphan = "orphanorphanorphanorph";
-    await t.ctx.summaries.put({ uid: orphan, "sum-id": orphan, patientID: PATIENT_EN, translations: {}, language: "en", status: "ready", createdAt: "2026-01-01T00:00:00.000Z", expiresAt: 1, inputKind: "text" });
+    await t.ctx.summaries.put({ uid: orphan, "sum-id": orphan, patientID: PATIENT_EN, status: "ready", createdAt: "2026-01-01T00:00:00.000Z", expiresAt: 1, inputKind: "text" });
     const report = await t.ctx.purge();
     expect(report.linksPurged).toBe(0);
     expect(report.orphanDocumentsDeleted).toBe(1);

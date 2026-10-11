@@ -4,20 +4,20 @@
 #   npm run dev            (in another terminal, from backend/)
 #   npm run seed           (once, on a local SQLite file: six synthetic patients; never on MySQL)
 #   npm run demo           (this script, from backend/ or anywhere)
-# Story: GET /patients -> POST /ingest {data,type:"text",patientID,language} for Example 1 (CHF) in
-#        Spanish -> 202 "ingestion started" with the sumId -> the server prints the email to the patient
-#        and the caregiver -> GET /llm-sumary?sum-id= -> GET /translation?lang=es (made at ingest, from
-#        the store) -> GET /translation?lang=zh twice (agent once, then the cache) -> GET /p/:token ->
-#        POST /synthesize ar -> the sweeper with DEMO_NOW 31 days ahead -> 410 -> the deletion receipts.
+# Story: GET /patients -> POST /ingest {data,type:"text",patientID} for Example 1 (CHF) -> 202
+#        "ingestion started" with the sumId -> in the background the text goes to the LLM, the summary is
+#        saved, and the server prints the email to the patient and the caregiver -> GET /llm-sumary?sum-id=
+#        -> GET /translation?lang=es twice and ?lang=zh twice (the agent runs once per language, then the
+#        stored copy answers; ingestion itself translated nothing) -> GET /p/:token -> POST /synthesize ar
+#        -> the sweeper with DEMO_NOW 31 days ahead -> 410 -> the deletion receipts.
 # The sweep step runs in this shell with the same .env / Secrets Manager configuration as the server,
 # so start the server from backend/ (SQLite file data/app.db, local twins under data/) or point both at
-# the team account. Override BASE_URL / PROVIDER_API_KEY / PATIENT_ID / INPUT / LANGUAGE as needed.
+# the team account. Override BASE_URL / PROVIDER_API_KEY / PATIENT_ID / INPUT as needed.
 set -eu
 
 BASE_URL="${BASE_URL:-http://localhost:${PORT:-4000}}"
 KEY="${PROVIDER_API_KEY:-dev-provider-key}"
 INPUT="${INPUT:-fixtures/discharge-summaries/example-1-chf.txt}"
-LANGUAGE="${LANGUAGE:-Spanish}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DIR"
 
@@ -37,9 +37,9 @@ PATIENT_ID="${PATIENT_ID:-$(printf '%s' "$PATIENTS" | json patients.0.ID)}"
 printf '%s' "$PATIENTS" | json patients.0
 echo "patientID=$PATIENT_ID"
 
-step "3. POST /ingest {data, type, patientID, language: $LANGUAGE} -> 202 'ingestion started'"
+step "3. POST /ingest {data, type, patientID} -> 202 'ingestion started' (a PDF would be turned into text before this answer)"
 if [ "${INPUT##*.}" = "pdf" ]; then TYPE=pdf; else TYPE=text; fi
-BODY=$(node -e 'const fs=require("fs");const [f,t,p,l]=process.argv.slice(1);const b=fs.readFileSync(f);console.log(JSON.stringify({data:t==="pdf"?b.toString("base64"):b.toString("utf8"),type:t,patientID:p,language:l}))' "$INPUT" "$TYPE" "$PATIENT_ID" "$LANGUAGE")
+BODY=$(node -e 'const fs=require("fs");const [f,t,p]=process.argv.slice(1);const b=fs.readFileSync(f);console.log(JSON.stringify({data:t==="pdf"?b.toString("base64"):b.toString("utf8"),type:t,patientID:p}))' "$INPUT" "$TYPE" "$PATIENT_ID")
 ACCEPTED=$(printf '%s' "$BODY" | curl -sS -H "x-provider-key: $KEY" -H 'content-type: application/json' --data-binary @- "$BASE_URL/ingest")
 echo "$ACCEPTED"
 JOB_ID=$(printf '%s' "$ACCEPTED" | json jobId)
@@ -65,12 +65,14 @@ echo "steps:"; printf '%s' "$SUMMARY" | json llm-summary.steps
 echo "medications (status, name, dose | how often):"; printf '%s' "$SUMMARY" | meds llm-summary 20
 echo "daysLeft=$(printf '%s' "$SUMMARY" | json daysLeft) expiresAt=$(printf '%s' "$SUMMARY" | json expiresAt) availableLanguages=$(printf '%s' "$SUMMARY" | json availableLanguages)"
 
-step "6. GET /translation?lang=es&sum_id= : made at ingest because the provider picked $LANGUAGE, so it comes from the store"
-ES=$(curl -sS "$BASE_URL/translation?lang=es&sum_id=$SUM_ID")
-printf '%s' "$ES" | json translation.steps.0
-echo "fromCache=$(printf '%s' "$ES" | json fromCache) lang=$(printf '%s' "$ES" | json lang)"
+step "6. GET /translation?lang=es&sum_id= twice: ingestion translated nothing, so the first call runs the agent, the second is served from the item"
+ES1=$(curl -sS "$BASE_URL/translation?lang=es&sum_id=$SUM_ID")
+printf '%s' "$ES1" | json translation.steps.0
+echo "first call fromCache=$(printf '%s' "$ES1" | json fromCache) lang=$(printf '%s' "$ES1" | json lang)"
+ES2=$(curl -sS "$BASE_URL/translation?lang=Spanish&sum_id=$SUM_ID")
+echo "second call fromCache=$(printf '%s' "$ES2" | json fromCache) availableLanguages=$(printf '%s' "$ES2" | json availableLanguages)"
 
-step "7. GET /translation?lang=zh twice: the translation agent runs once, then the cache answers"
+step "7. GET /translation?lang=zh twice: the same again for Mandarin"
 ZH1=$(curl -sS "$BASE_URL/translation?lang=zh&sum_id=$SUM_ID")
 printf '%s' "$ZH1" | json translation.steps.0
 echo "first call fromCache=$(printf '%s' "$ZH1" | json fromCache)"
@@ -78,7 +80,7 @@ ZH2=$(curl -sS "$BASE_URL/translation?lang=Mandarin&sum_id=$SUM_ID")
 echo "second call fromCache=$(printf '%s' "$ZH2" | json fromCache) availableLanguages=$(printf '%s' "$ZH2" | json availableLanguages)"
 echo "medication names and doses stay verbatim:"; printf '%s' "$ZH2" | meds translation 4
 
-step "8. The patient page (GET /p/:token, the diagram's route) on the same sumId"
+step "8. The patient page (GET /p/:token, the diagram's route) on the same sumId; Spanish is already stored, so it is a cache hit"
 VIEW=$(curl -sS "$BASE_URL/p/$SUM_ID?language=es")
 echo "language=$(printf '%s' "$VIEW" | json language) fromCache=$(printf '%s' "$VIEW" | json fromCache) daysLeft=$(printf '%s' "$VIEW" | json daysLeft)"
 

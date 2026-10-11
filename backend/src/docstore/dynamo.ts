@@ -59,7 +59,7 @@ export class DynamoSummaryStore implements SummaryStore {
     const { Item } = (await this.doc.send(new GetCommand({ TableName: this.table, Key: this.keyFor(uid) }))) as { Item?: Record<string, unknown> };
     if (!Item) return null;
     const { [this.key]: _k, ...rest } = Item;
-    return { ...(rest as Omit<SummaryItem, "uid">), uid, translations: (rest.translations as SummaryItem["translations"]) ?? {} };
+    return { ...(rest as Omit<SummaryItem, "uid">), uid };
   }
 
   async update(uid: string, patch: SummaryPatch): Promise<void> {
@@ -85,17 +85,44 @@ export class DynamoSummaryStore implements SummaryStore {
     );
   }
 
+  /**
+   * Sets translations[lang]. Ingestion does not create the `translations` map, so the first
+   * translation creates it: the nested SET fails when the map is missing ("document path invalid"),
+   * the map is then created with this language in it (only if still missing), and a concurrent
+   * writer that created it first makes this one fall back to the nested SET.
+   */
   async setTranslation(uid: string, lang: string, output: AiOutput): Promise<void> {
-    await this.doc.send(
-      new UpdateCommand({
-        TableName: this.table,
-        Key: this.keyFor(uid),
-        UpdateExpression: "SET #t.#lang = :v",
-        ExpressionAttributeNames: { "#t": "translations", "#lang": lang, "#k": this.key },
-        ExpressionAttributeValues: { ":v": output },
-        ConditionExpression: "attribute_exists(#k)",
-      }),
-    );
+    const nested = () =>
+      this.doc.send(
+        new UpdateCommand({
+          TableName: this.table,
+          Key: this.keyFor(uid),
+          UpdateExpression: "SET #t.#lang = :v",
+          ExpressionAttributeNames: { "#t": "translations", "#lang": lang, "#k": this.key },
+          ExpressionAttributeValues: { ":v": output },
+          ConditionExpression: "attribute_exists(#k)",
+        }),
+      );
+    try {
+      await nested();
+    } catch (err) {
+      if ((err as { name?: string }).name !== "ValidationException") throw err;
+      try {
+        await this.doc.send(
+          new UpdateCommand({
+            TableName: this.table,
+            Key: this.keyFor(uid),
+            UpdateExpression: "SET #t = :m",
+            ExpressionAttributeNames: { "#t": "translations", "#k": this.key },
+            ExpressionAttributeValues: { ":m": { [lang]: output } },
+            ConditionExpression: "attribute_exists(#k) AND attribute_not_exists(#t)",
+          }),
+        );
+      } catch (err2) {
+        if ((err2 as { name?: string }).name !== "ConditionalCheckFailedException") throw err2;
+        await nested();
+      }
+    }
   }
 
   async delete(uid: string): Promise<boolean> {

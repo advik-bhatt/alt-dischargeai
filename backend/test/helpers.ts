@@ -93,7 +93,6 @@ export interface Ingested {
   sumId: string;
   linkId: string;
   link: string;
-  language: string;
   expiresAt: string;
 }
 

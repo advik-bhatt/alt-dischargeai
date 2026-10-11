@@ -18,7 +18,7 @@ export function upsertSummarySql(dialect: Db["dialect"]): string {
 
 function parse(r: Row): SummaryItem {
   const item = JSON.parse(r.item) as SummaryItem;
-  return { ...item, uid: r.uid, translations: item.translations ?? {} };
+  return { ...item, uid: r.uid };
 }
 
 /**
