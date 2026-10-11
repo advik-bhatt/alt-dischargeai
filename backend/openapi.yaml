@@ -1134,3 +1134,67 @@ paths:
           description: Audio provider failed
         "501":
           description: ElevenLabs not configured
+  /chat:
+    post:
+      tags:
+        - patient
+      summary: Ask a question about this patient's Going-Home Plan (medicines, appointments, follow-up)
+      description: Answers come only from the plan. Emergencies get 911/988 at once; "should I take X" is decided from the plan's medicine lists; anything the plan does not say gets "please call your nurse or doctor". The question text is not stored; the browser sends the recent conversation back with each question.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - question
+              properties:
+                token:
+                  type: string
+                question:
+                  type: string
+                  maxLength: 1000
+                history:
+                  type: array
+                  maxItems: 6
+                  description: Earlier [question, answer] pairs from this conversation
+                  items:
+                    type: array
+                    minItems: 2
+                    maxItems: 2
+                    items:
+                      type: string
+      responses:
+        "200":
+          description: The answer, how it was decided, and the plan lines it rests on
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  route:
+                    type: string
+                    enum: [emergency, crisis, medicine, plan_answer, referral, clarify, other, medication_mistake]
+                  quotes:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          description: Invalid body or link id
+        "404":
+          description: Unknown bearer link
+        "409":
+          description: The plan has no text to answer from
+        "410":
+          description: Link expired or purged
+        "425":
+          description: Plan processing
+        "429":
+          description: Rate limit
+        "500":
+          description: The assistant failed
+        "501":
+          description: The plan assistant is not configured

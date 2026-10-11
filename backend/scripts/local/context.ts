@@ -24,9 +24,10 @@ import type { Config } from "../../src/config.js";
 import type { SpeechToText } from "../../src/pipeline/types.js";
 import type { TranslationProvider } from "../../src/pipeline/translation.js";
 import type { ReadAloudProvider } from "../../src/pipeline/readAloud.js";
+import type { ChatProvider } from "../../src/pipeline/chat.js";
 import type { LiveDictationProvider } from "../../src/pipeline/liveDictation.js";
 
-export interface LocalProviders { agent?: AgentProvider; speech?: SpeechToText; liveDictation?: LiveDictationProvider; translator?: TranslationProvider; readAloud?: ReadAloudProvider; config?: Partial<Config>; dataDir?: string }
+export interface LocalProviders { agent?: AgentProvider; speech?: SpeechToText; liveDictation?: LiveDictationProvider; translator?: TranslationProvider; readAloud?: ReadAloudProvider; chat?: ChatProvider; config?: Partial<Config>; dataDir?: string }
 
 export const LOCAL_PROVIDER_KEY = "local-test-key";
 export const LOCAL_AUDIO_TRANSCRIPT = "Synthetic audio transcript for local workflow testing. This is a fixed fixture, not recognized speech.";
@@ -179,7 +180,7 @@ export async function createLocalContext(opts: LocalProviders & { port?: number;
         return { response: fixtureResponse(notes), sessionId, latencyMs: Date.now() - started };
       },
     },
-    translator: opts.translator, readAloud: opts.readAloud,
+    translator: opts.translator, readAloud: opts.readAloud, chat: opts.chat,
     liveDictation: opts.liveDictation ?? (opts.agent ? undefined : {
       name: "local-fixture",
       async *transcribe(audio, _sampleRate, signal) {

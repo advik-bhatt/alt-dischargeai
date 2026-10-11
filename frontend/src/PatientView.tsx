@@ -14,6 +14,7 @@ import { FontSizeControl } from "./FontSizeControl"
 import { useFontScale } from "./fontScale"
 import { DeletionTimer } from "./DeletionTimer"
 import { useReadAloud } from "./useReadAloud"
+import { PlanChat } from "./PlanChat"
 import { useDischarge } from "./useDischarge"
 import { speechTextFor } from "./speechText"
 
@@ -233,6 +234,7 @@ export function PatientView({
           {t(language, "privacyNotice")}
         </p>
       </main>
+      <PlanChat token={session.patientToken} language={language} />
     </div>
   )
 }

@@ -54,6 +54,11 @@ export const registerPatient = (patient: { ID: string; DOB: string; FirstName?: 
   const init = jsonBody(patient); init.headers = { ...init.headers, ...provider(key) }
   return request<{ patient: ContractPatient; created: boolean }>("/patients", init)
 }
+export type ChatReply = { text: string; route: string; quotes: string[] }
+/** Ask about the patient's own plan. history: earlier [question, answer] pairs, oldest first. */
+export function askPlan(token: string, question: string, history: [string, string][]) {
+  return request<ChatReply>("/chat", jsonBody({ token, question, history }))
+}
 export async function getReadAloud(token: string, text: string, language: string, signal: AbortSignal) {
   const response = await fetch(BASE_URL + '/read-aloud', { ...jsonBody({ token, text, language }), signal })
   if (!response.ok) { const body = await response.json(); throw new Error(body.message ?? body.error ?? "Read-aloud failed") }

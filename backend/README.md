@@ -114,6 +114,7 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=<sumI
 | GET | `/llm-sumary?sum-id=` | patient | the stored plan; `/llm-summary` and `?sum_id=` also work |
 | GET | `/p/:token` | patient | the same plan, by path |
 | GET | `/translation?lang=&sum_id=` | patient | the plan in `es`, `zh` or `ar` from the AI-Infra translator when `TRANSLATION_PROVIDER=ai-infra`, cached per plan; `501` otherwise. `/translate` is the earlier spelling |
+| POST | `/chat` | patient | `{ token, question, history }`: answers a question about this patient's plan with the AI-Infra chatbot (`CHAT_PROVIDER=ai-infra`; `501` otherwise). Emergencies get 911/988 at once, "should I take X" is decided from the plan's medicine lists, and anything the plan doesn't say gets "call your nurse or doctor". The question is not stored |
 | POST | `/read-aloud` | patient | ElevenLabs audio of a displayed plan section when `ELEVENLABS_API_KEY` is set |
 | POST | `/auth/login`, `/auth/link` | anyone | the web app's sign-in: doctor email and password (local runner and hosted mode only; `501` here), and patient or caregiver link plus date of birth |
 | GET | `/docs`, `/openapi.json` | anyone | Swagger UI and the OpenAPI 3.0.3 spec |
@@ -158,6 +159,7 @@ Copy `.env.example` to `.env` to override anything. Defaults point at the Discha
 | `EMAIL_TRANSPORT`, `EMAIL_FROM`, `SMTP_URL` | `console`, a placeholder, unset | `console` prints, `smtp`, or `ses` |
 | `EMAIL_QUEUE`, `SQS_QUEUE_URL` | `none`, unset | `sqs` queues emails; `npm run email-worker` sends them |
 | `MAX_UPLOAD_BYTES` | 15 MB | PDF and audio limit |
+| `CHAT_PROVIDER`, `CHAT_TIMEOUT_MS` | `off`, `90000` | `ai-infra` answers patient questions with the AI-Infra chatbot, using the same Python |
 | `TRANSLATION_PROVIDER`, `PYTHON_EXECUTABLE` | `off`, `python` | `ai-infra` runs the AI-Infra translator with that Python (install `../AI-Infra/requirements.txt`) |
 | `SPEECH_PROVIDER`, `HEALTHSCRIBE_*`, `TRANSCRIBE_STREAMING_REGION` | `transcribe`, unset, `us-east-1` | recorded audio (Transcribe Medical or HealthScribe) and live microphone dictation |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` | unset, a default voice, `eleven_multilingual_v2` | read-aloud |
@@ -183,6 +185,7 @@ Scripts: `dev`, `start`, `start:hosted` (the hosted server; see the root README)
 | Purge and receipts | `src/pipeline/purge.ts`, `src/audit/receipts.ts`, `scripts/sweep.ts` |
 | Provider auth | `src/middleware/providerAuth.ts` |
 | Configuration from Secrets Manager | `src/secrets.ts`, `src/bootstrap.ts` |
+| Patient chat | `src/routes/chat.ts`, `src/pipeline/chat.ts`, `../AI-Infra/patient_agents/chat_bridge.py`, `../frontend/src/PlanChat.tsx` |
 | Translation, read-aloud, live dictation | `src/pipeline/translation.ts`, `src/pipeline/readAloud.ts`, `src/pipeline/liveDictation.ts`, `src/dictationSocket.ts` |
 | Web app sign-in | `src/routes/auth.ts` |
 | Hosted mode (Postgres, Vercel) | `src/hosted/` |

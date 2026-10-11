@@ -17,6 +17,7 @@ import { JobQueue } from "../pipeline/queue.js";
 import { ElevenLabsReadAloud } from "../pipeline/readAloud.js";
 import { createSpeechToText } from "../pipeline/speechToText.js";
 import { AiInfraTranslator } from "../pipeline/translation.js";
+import { AiInfraChat } from "../pipeline/chat.js";
 import { PostgresDb, PostgresObjects, PostgresSummaries } from "./postgres.js";
 
 /**
@@ -95,6 +96,7 @@ export async function createHostedContext(env: Record<string, string | undefined
     speechToText: speech ?? { name: "unavailable", async transcribe() { throw new Error("Recorded audio is not configured on this server. Paste notes, upload a readable PDF, or use live dictation."); } },
     liveDictation: new MedicalLiveDictation(config.TRANSCRIBE_STREAMING_REGION),
     translator: config.TRANSLATION_PROVIDER === "ai-infra" ? new AiInfraTranslator(config) : undefined,
+    chat: config.CHAT_PROVIDER === "ai-infra" ? new AiInfraChat(config) : undefined,
     readAloud: config.ELEVENLABS_API_KEY ? new ElevenLabsReadAloud(config) : undefined,
     mailer: await createMailer(config, log),
     queue,

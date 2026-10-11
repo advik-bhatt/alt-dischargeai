@@ -9,6 +9,7 @@ import {
 import { t } from "./i18n"
 import { DeletionTimer } from "./DeletionTimer"
 import { useDischarge } from "./useDischarge"
+import { PlanChat } from "./PlanChat"
 
 // Caregiver chrome renders in English (the task explicitly allows defaulting
 // the caregiver view to en, as long as nothing is half-translated). Routing
@@ -102,6 +103,7 @@ export function CaregiverView({
           />
         )}
       </main>
+      <PlanChat token={session.patientToken} language={CG} />
     </div>
   )
 }

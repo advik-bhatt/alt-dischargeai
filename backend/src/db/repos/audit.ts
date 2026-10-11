@@ -12,6 +12,7 @@ export type AuditEvent =
   | "email.queued"
   | "email.skipped"
   | "summary.viewed"
+  | "chat.answered"
   | "synthesize.run"
   | "link.expired"
   | "link.purged"

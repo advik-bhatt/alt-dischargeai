@@ -84,6 +84,9 @@ export const ConfigSchema = z.object({
   TRANSLATION_PROVIDER: z.enum(["off", "ai-infra"]).default("off"),
   PYTHON_EXECUTABLE: z.string().default("python"),
   TRANSLATION_TIMEOUT_MS: int(15 * 60 * 1000),
+  /** Patient Q&A about their plan: off | ai-infra (AI-Infra/patient_agents/chatbot.py, Python like translation). */
+  CHAT_PROVIDER: z.enum(["off", "ai-infra"]).default("off"),
+  CHAT_TIMEOUT_MS: int(90_000),
   ELEVENLABS_API_KEY: optionalString,
   ELEVENLABS_VOICE_ID: z.string().regex(/^[A-Za-z0-9_-]+$/).default("21m00Tcm4TlvDq8ikWAM"),
   ELEVENLABS_MODEL_ID: z.string().default("eleven_multilingual_v2"),

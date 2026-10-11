@@ -81,6 +81,7 @@ test("every OpenAPI operation is checked against real HTTP routes and SQL reposi
     await t.test("JSON ingestion rejects invalid input before writing anything", async () => {
       await call("/patients", 200, post({ ID: "7", DOB: "2000-01-01" }));
       await call("/read-aloud", 501, post({ token: "unavailable", language: "en", text: "test" }));
+      await call("/chat", 501, post({ token: "unavailable", question: "test" }));
       const cases: [unknown, number, string][] = [
         [{}, 400, "invalid_type"], [{ type: "dictation", patientID: "7", data: "notes" }, 400, "invalid_type"],
         [{ type: "text", data: "notes" }, 400, "missing_patientID"], [{ type: "text", patientID: "7" }, 400, "missing_data"],

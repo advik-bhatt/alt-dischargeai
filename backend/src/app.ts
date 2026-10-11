@@ -19,12 +19,13 @@ import { summaryRouter } from "./routes/summary.js";
 import { synthesizeRouter } from "./routes/synthesize.js";
 import { translationRouter } from "./routes/translation.js";
 import { readAloudRouter } from "./routes/readAloud.js";
+import { chatRouter } from "./routes/chat.js";
 
 export const OPENAPI_FILE = join(import.meta.dirname, "..", "openapi.yaml");
 
 /** Paths the team contract names, plus the earlier routes kept as aliases. */
 export const PROVIDER_PATHS = ["/patients", "/ingest", "/jobs", "/synthesize"];
-export const PATIENT_PATHS = ["/llm-sumary", "/llm-summary", "/translation", "/summary", "/translate", "/p", "/read-aloud"];
+export const PATIENT_PATHS = ["/llm-sumary", "/llm-summary", "/translation", "/summary", "/translate", "/p", "/read-aloud", "/chat"];
 
 function buildApi(ctx: AppContext): Express {
   const app = express();
@@ -79,6 +80,9 @@ function buildApi(ctx: AppContext): Express {
   app.use(translationRouter(ctx));
   app.use("/read-aloud", rateLimit({ capacity: 20, refillPerSecond: 0.2 }));
   app.use(readAloudRouter(ctx));
+  // A model call per question: a tighter bucket than the plan reads.
+  app.use("/chat", rateLimit({ capacity: 20, refillPerSecond: 0.2 }));
+  app.use(chatRouter(ctx));
   app.use(summaryRouter(ctx));
   app.use(patientLinkRouter(ctx));
 

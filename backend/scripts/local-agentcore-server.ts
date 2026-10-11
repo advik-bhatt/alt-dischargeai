@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { AiInfraTranslator } from "../src/pipeline/translation.js";
+import { AiInfraChat } from "../src/pipeline/chat.js";
 import { ElevenLabsReadAloud } from "../src/pipeline/readAloud.js";
 import { createSpeechToText } from "../src/pipeline/speechToText.js";
 import { createLogger } from "../src/logger.js";
@@ -19,7 +20,8 @@ try {
   const speech = config.SPEECH_PROVIDER === "healthscribe" && config.HEALTHSCRIBE_BUCKET && config.HEALTHSCRIBE_ROLE_ARN ? await createSpeechToText(config, createLogger("silent")) : undefined;
   const local = await startLocalServer(port, { agent, speech, liveDictation: new MedicalLiveDictation(config.TRANSCRIBE_STREAMING_REGION), dataDir: resolve(process.env.LOCAL_DATA_DIR ?? "../.local-data"),
     translator: config.TRANSLATION_PROVIDER === "ai-infra" ? new AiInfraTranslator(config) : undefined,
-    readAloud: config.ELEVENLABS_API_KEY ? new ElevenLabsReadAloud(config) : undefined });
+    readAloud: config.ELEVENLABS_API_KEY ? new ElevenLabsReadAloud(config) : undefined,
+    chat: config.CHAT_PROVIDER === "ai-infra" ? new AiInfraChat(config) : undefined });
   await local.ctx.purge();
   const purgeTimer = setInterval(() => { void local.ctx.purge().catch(error => console.error("Local purge failed:", error.message)); }, 60_000);
   purgeTimer.unref();

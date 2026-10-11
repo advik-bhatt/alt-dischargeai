@@ -41,6 +41,7 @@ Environment variables (Vercel project settings):
 | `AGENT_RUNTIME_ARN` | plan generation | an AgentCore runtime the AWS credentials may invoke; the region comes from the ARN |
 | `DISCHARGEAI_AWS_ACCESS_KEY_ID`, `DISCHARGEAI_AWS_SECRET_ACCESS_KEY`, `DISCHARGEAI_AWS_SESSION_TOKEN` | plan generation, dictation, translation | Vercel does not pass the standard `AWS_*` key names to the container, so the server copies these into them at boot. Temporary hackathon credentials expire and must be replaced when they do; `AWS_REGION` is set as usual |
 | `TRANSLATION_PROVIDER` | translation | `ai-infra` runs the AI-Infra translator (Python is in the image); it needs the AWS credentials too |
+| `CHAT_PROVIDER` | the patient chat | `ai-infra` runs the AI-Infra patient chatbot (answers only from the patient's plan); it needs the AWS credentials too |
 | `ELEVENLABS_API_KEY` | read-aloud | optional |
 
 Without `AGENT_RUNTIME_ARN` and working AWS credentials the app still signs in, registers patients and accepts writeups, and each job fails with "AI is not configured on this server"; there is no fixture fallback. Emails print to the server log (`EMAIL_TRANSPORT=console`). Jobs run inside the instance that accepted them; a job whose instance was stopped is picked up again by the next instance once it has been idle longer than `AGENT_TIMEOUT_MS` plus a minute. `npm test` covers the hosted mode against a real Postgres when `HOSTED_TEST_POSTGRES_URL` is set (see `backend/test/hosted.test.ts`).

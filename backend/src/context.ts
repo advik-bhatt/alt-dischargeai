@@ -19,6 +19,7 @@ import { createAgent, type AgentProvider } from "./pipeline/agent.js";
 import { createSpeechToText, type SpeechToText } from "./pipeline/speechToText.js";
 import type { SecretsBootstrapResult } from "./secrets.js";
 import { AiInfraTranslator, type TranslationProvider } from "./pipeline/translation.js";
+import { AiInfraChat, type ChatProvider } from "./pipeline/chat.js";
 import { ElevenLabsReadAloud, type ReadAloudProvider } from "./pipeline/readAloud.js";
 import { MedicalLiveDictation, type LiveDictationProvider } from "./pipeline/liveDictation.js";
 
@@ -51,6 +52,8 @@ export interface AppContext {
   speechToText: SpeechToText;
   liveDictation?: LiveDictationProvider;
   translator?: TranslationProvider;
+  /** Patient Q&A about their own plan. */
+  chat?: ChatProvider;
   readAloud?: ReadAloudProvider;
   mailer: Mailer;
   emailQueue?: EmailQueue;
@@ -126,6 +129,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     speechToText,
     liveDictation: new MedicalLiveDictation(config.TRANSCRIBE_STREAMING_REGION),
     translator: config.TRANSLATION_PROVIDER === "ai-infra" ? new AiInfraTranslator(config) : undefined,
+    chat: config.CHAT_PROVIDER === "ai-infra" ? new AiInfraChat(config) : undefined,
     readAloud: config.ELEVENLABS_API_KEY ? new ElevenLabsReadAloud(config) : undefined,
     mailer,
     emailQueue,

@@ -17,6 +17,21 @@ export type UIKey =
   | "signOut"
   | "privacyNotice"
   | "planUnavailable"
+  // Plan chat
+  | "chatOpen"
+  | "chatTitle"
+  | "chatSeam"
+  | "chatPrivacy"
+  | "chatPlaceholder"
+  | "chatSend"
+  | "chatClose"
+  | "chatThinking"
+  | "chatError"
+  | "chatSuggestMeds"
+  | "chatSuggestAppointments"
+  | "chatSuggestWarnings"
+  | "chatLanguageNote"
+  | "chatFromPlan"
   // Language picker
   | "languageLabel"
   | "languageSearchPlaceholder"
@@ -61,6 +76,20 @@ export const UI_STRINGS: Record<Language, Record<UIKey, string>> = {
     signOut: "Sign out",
     privacyNotice: "Protected health information. Authorized access only.",
     planUnavailable: "Your plan is not available right now.",
+    chatOpen: "Ask about your plan",
+    chatTitle: "Questions about your plan",
+    chatSeam: "Answers come only from your Going-Home Plan. This is not medical advice. In an emergency, call 911.",
+    chatPrivacy: "This chat is not saved. Closing the page clears it.",
+    chatPlaceholder: "Ask about your medicines, appointments, or what to do next",
+    chatSend: "Send",
+    chatClose: "Close",
+    chatThinking: "Checking your plan…",
+    chatError: "The assistant could not answer right now. Please call your nurse or doctor with your question.",
+    chatSuggestMeds: "What medicines do I take each day?",
+    chatSuggestAppointments: "When is my follow-up appointment?",
+    chatSuggestWarnings: "When should I get help right away?",
+    chatLanguageNote: "",
+    chatFromPlan: "Lines from your plan",
     languageLabel: "Language",
     languageSearchPlaceholder: "Search languages",
     languageNoMatches: "No languages match your search.",
@@ -99,6 +128,20 @@ export const UI_STRINGS: Record<Language, Record<UIKey, string>> = {
     signOut: "Cerrar sesión",
     privacyNotice: "Información médica protegida. Solo acceso autorizado.",
     planUnavailable: "Su plan no está disponible en este momento.",
+    chatOpen: "Preguntar sobre su plan",
+    chatTitle: "Preguntas sobre su plan",
+    chatSeam: "Las respuestas vienen solo de su Plan para Ir a Casa. Esto no es un consejo médico. En una emergencia, llame al 911.",
+    chatPrivacy: "Este chat no se guarda. Al cerrar la página se borra.",
+    chatPlaceholder: "Pregunte sobre sus medicinas, citas o qué hacer después",
+    chatSend: "Enviar",
+    chatClose: "Cerrar",
+    chatThinking: "Revisando su plan…",
+    chatError: "El asistente no pudo responder ahora. Por favor llame a su enfermera o a su médico con su pregunta.",
+    chatSuggestMeds: "¿Qué medicinas tomo cada día?",
+    chatSuggestAppointments: "¿Cuándo es mi cita de seguimiento?",
+    chatSuggestWarnings: "¿Cuándo debo buscar ayuda de inmediato?",
+    chatLanguageNote: "",
+    chatFromPlan: "Líneas de su plan",
     languageLabel: "Idioma",
     languageSearchPlaceholder: "Buscar idiomas",
     languageNoMatches: "Ningún idioma coincide con su búsqueda.",
@@ -138,6 +181,20 @@ export const UI_STRINGS: Record<Language, Record<UIKey, string>> = {
     signOut: "退出登录",
     privacyNotice: "受保护的健康信息。仅限授权访问。",
     planUnavailable: "您的计划目前无法使用。",
+    chatOpen: "询问您的计划",
+    chatTitle: "关于您计划的问题",
+    chatSeam: "回答只来自您的出院回家计划。这不是医疗建议。紧急情况请拨打 911。",
+    chatPrivacy: "此聊天不会保存。关闭页面后即清除。",
+    chatPlaceholder: "询问您的药物、预约或下一步该做什么",
+    chatSend: "发送",
+    chatClose: "关闭",
+    chatThinking: "正在查看您的计划…",
+    chatError: "助手现在无法回答。请致电您的护士或医生询问。",
+    chatSuggestMeds: "我每天要吃哪些药？",
+    chatSuggestAppointments: "我的复诊预约是什么时候？",
+    chatSuggestWarnings: "什么情况下我应该立即求助？",
+    chatLanguageNote: "助手用英语或西班牙语回答。",
+    chatFromPlan: "您计划中的内容",
     languageLabel: "语言",
     languageSearchPlaceholder: "搜索语言",
     languageNoMatches: "没有符合您搜索的语言。",
@@ -175,6 +232,20 @@ export const UI_STRINGS: Record<Language, Record<UIKey, string>> = {
     signOut: "تسجيل الخروج",
     privacyNotice: "معلومات صحية محمية. الوصول للمصرح لهم فقط.",
     planUnavailable: "خطتك غير متوفرة في الوقت الحالي.",
+    chatOpen: "اسأل عن خطتك",
+    chatTitle: "أسئلة حول خطتك",
+    chatSeam: "تأتي الإجابات من خطة العودة إلى المنزل فقط. هذه ليست نصيحة طبية. في حالة الطوارئ، اتصل بالرقم 911.",
+    chatPrivacy: "لا يتم حفظ هذه المحادثة. يؤدي إغلاق الصفحة إلى مسحها.",
+    chatPlaceholder: "اسأل عن أدويتك أو مواعيدك أو ما يجب فعله بعد ذلك",
+    chatSend: "إرسال",
+    chatClose: "إغلاق",
+    chatThinking: "جارٍ التحقق من خطتك…",
+    chatError: "تعذر على المساعد الإجابة الآن. يرجى الاتصال بالممرضة أو الطبيب بسؤالك.",
+    chatSuggestMeds: "ما الأدوية التي أتناولها كل يوم؟",
+    chatSuggestAppointments: "متى موعد المتابعة الخاص بي؟",
+    chatSuggestWarnings: "متى يجب أن أطلب المساعدة فورًا؟",
+    chatLanguageNote: "يجيب المساعد باللغة الإنجليزية أو الإسبانية.",
+    chatFromPlan: "سطور من خطتك",
     languageLabel: "اللغة",
     languageSearchPlaceholder: "ابحث عن اللغات",
     languageNoMatches: "لا توجد لغات تطابق بحثك.",

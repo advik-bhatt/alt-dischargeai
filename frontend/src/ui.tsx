@@ -25,6 +25,8 @@ export type IconName =
   | "textSize"
   | "speaker"
   | "speakerOff"
+  | "chat"
+  | "close"
 
 const iconPaths: Record<IconName, ReactNode> = {
   activity: <path d="M3 12h4l3 8 4-16 3 8h4" />,
@@ -154,6 +156,8 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="M23 9l-6 6M17 9l6 6" />
     </>
   ),
+  chat: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />,
+  close: <path d="M6 6l12 12M18 6 6 18" />,
 }
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
