@@ -11,9 +11,8 @@ import { toContractPatient } from "../db/repos/patients.js";
 export function patientsRouter(ctx: AppContext): Router {
   const r = Router();
 
-  r.get("/patients", async (req, res) => {
-    const q = typeof req.query.q === "string" ? req.query.q : undefined;
-    const patients = await ctx.patients.list(q);
+  r.get("/patients", async (_req, res) => {
+    const patients = await ctx.patients.list();
     res.json({ patients: patients.map(toContractPatient) });
   });
 

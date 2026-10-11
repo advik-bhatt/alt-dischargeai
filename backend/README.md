@@ -50,9 +50,6 @@ curl -s -H "x-provider-key: dev-provider-key" http://localhost:4000/patients
 
 # Without the provider key: 401 {"statusCode":401,...}
 curl -s -w ' HTTP %{http_code}\n' http://localhost:4000/patients
-
-# Search by name, email or phone
-curl -s -H "x-provider-key: dev-provider-key" "http://localhost:4000/patients?q=reyes"
 ```
 
 ### Task 2: `pdfToText`
@@ -170,7 +167,7 @@ Run on 2026-10-10 in the build container with the offline providers on SQLite: e
 | Method | Path | Who | What |
 | --- | --- | --- | --- |
 | GET | `/health` | anyone | clock, configuration source, providers, PDF and audio stores with any fallback reason |
-| GET | `/patients[?q=]` | provider | task 1 |
+| GET | `/patients` | provider | task 1 |
 | GET | `/patients/:id` | provider | one patient, with the active link once generated |
 | POST | `/ingest` | provider | task 3; takes no language and translates nothing. Multipart `patientId` + one of `text`, `file` (PDF), `audio` is kept as an alias (audio comes from the diagram; it is transcribed in the background first, the only input whose text does not exist before the answer) |
 | GET | `/jobs/:jobId` | provider | follow the 202: stage, safety result, run metadata |

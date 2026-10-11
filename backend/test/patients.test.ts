@@ -38,17 +38,11 @@ describe("GET /patients (team contract: ID, DOB, FirstName, LastName, ZipCode, e
     expect(res.body.patients.every((p: { email: string }) => p.email.endsWith("@example.test"))).toBe(true);
   });
 
-  it("searches by name, email and phone, case-insensitively", async () => {
-    const byName = await t.provider(request(t.app).get("/patients?q=reyes"));
-    expect(byName.body.patients.map((p: { LastName: string }) => p.LastName)).toEqual(["Reyes"]);
-    const byEmail = await t.provider(request(t.app).get("/patients?q=WEI.ZHANG"));
-    expect(byEmail.body.patients).toHaveLength(1);
-    const byPhone = await t.provider(request(t.app).get("/patients?q=555-0103"));
-    expect(byPhone.body.patients[0].FirstName).toBe("Eleanor");
-    const fullName = await t.provider(request(t.app).get("/patients?q=harold jennings"));
-    expect(fullName.body.patients).toHaveLength(1);
-    const none = await t.provider(request(t.app).get("/patients?q=nobody"));
-    expect(none.body.patients).toHaveLength(0);
+  it("takes no parameters: a query string does not filter the list", async () => {
+    const all = await t.provider(request(t.app).get("/patients"));
+    const withQuery = await t.provider(request(t.app).get("/patients?q=nobody"));
+    expect(withQuery.status).toBe(200);
+    expect(withQuery.body.patients).toHaveLength(all.body.patients.length);
   });
 
   it("GET /patients/:id returns the contract keys plus the active link (null before any ingest)", async () => {

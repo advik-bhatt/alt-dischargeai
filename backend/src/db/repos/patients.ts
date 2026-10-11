@@ -188,17 +188,11 @@ export class PatientsRepo {
     };
   }
 
-  /** Every row of the table, optionally filtered by a case-insensitive substring of name, email or phone; sorted by last then first name. */
-  async list(q?: string): Promise<Patient[]> {
+  /** Every row of the table, sorted by last then first name. */
+  async list(): Promise<Patient[]> {
     const map = await this.columnMap();
     const rows = await this.db.all<Record<string, unknown>>(`SELECT * FROM ${quote(this.table)}`);
-    let patients = rows.map((r) => this.toPatient(r, map));
-    const needle = q?.trim().toLowerCase();
-    if (needle) {
-      patients = patients.filter((p) =>
-        [p.firstName, p.lastName, `${p.firstName ?? ""} ${p.lastName ?? ""}`, p.email, p.phone].some((v) => v && v.toLowerCase().includes(needle)),
-      );
-    }
+    const patients = rows.map((r) => this.toPatient(r, map));
     const key = (p: Patient) => `${(p.lastName ?? "").toLowerCase()}\u0000${(p.firstName ?? "").toLowerCase()}`;
     return patients.sort((a, b) => key(a).localeCompare(key(b)));
   }
