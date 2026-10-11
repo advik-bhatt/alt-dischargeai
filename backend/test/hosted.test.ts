@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
 import { buildApp } from "../src/app.js";
-import { createHostedContext } from "../src/hosted/context.js";
+import { applyHostedAwsCredentials, createHostedContext } from "../src/hosted/context.js";
 import { toPostgres } from "../src/hosted/postgres.js";
 import type { AgentProvider } from "../src/pipeline/agent.js";
 
@@ -73,4 +73,14 @@ test("hosted mode signs in, ingests, serves the plan and keeps it across a resta
 
 test("hosted mode refuses to start with the public development provider key", { skip: !url && "set HOSTED_TEST_POSTGRES_URL" }, async () => {
   await assert.rejects(createHostedContext({ POSTGRES_URL: url, LOG_LEVEL: "silent" }), /PROVIDER_API_KEY/);
+});
+
+test("hosted AWS credentials under DISCHARGEAI_AWS_* replace the standard names", () => {
+  const env: Record<string, string | undefined> = { DISCHARGEAI_AWS_ACCESS_KEY_ID: "id", DISCHARGEAI_AWS_SECRET_ACCESS_KEY: "secret", DISCHARGEAI_AWS_SESSION_TOKEN: "token", AWS_ACCESS_KEY_ID: "platform" };
+  assert.equal(applyHostedAwsCredentials(env), "DISCHARGEAI_AWS_*");
+  assert.deepEqual([env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY, env.AWS_SESSION_TOKEN], ["id", "secret", "token"]);
+  const permanent: Record<string, string | undefined> = { DISCHARGEAI_AWS_ACCESS_KEY_ID: "id", DISCHARGEAI_AWS_SECRET_ACCESS_KEY: "secret", AWS_SESSION_TOKEN: "stale" };
+  applyHostedAwsCredentials(permanent);
+  assert.equal(permanent.AWS_SESSION_TOKEN, undefined);
+  assert.equal(applyHostedAwsCredentials({}), "none");
 });

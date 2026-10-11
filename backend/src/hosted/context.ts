@@ -33,6 +33,24 @@ export function hostedPatientUrl(env: Record<string, string | undefined>, port: 
   return `http://localhost:${port}`;
 }
 
+/**
+ * Vercel does not pass AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN set in project
+ * settings through to the container (the first hosted run failed with "Could not load credentials from
+ * any providers"), so the hosted mode takes them as DISCHARGEAI_AWS_* and copies them into the standard
+ * names before any AWS client exists. The SDK and the Python translator then read them as usual.
+ * Returns where the credentials came from, by name only.
+ */
+export function applyHostedAwsCredentials(env: Record<string, string | undefined> = process.env): "DISCHARGEAI_AWS_*" | "AWS_*" | "none" {
+  if (env.DISCHARGEAI_AWS_ACCESS_KEY_ID && env.DISCHARGEAI_AWS_SECRET_ACCESS_KEY) {
+    env.AWS_ACCESS_KEY_ID = env.DISCHARGEAI_AWS_ACCESS_KEY_ID;
+    env.AWS_SECRET_ACCESS_KEY = env.DISCHARGEAI_AWS_SECRET_ACCESS_KEY;
+    if (env.DISCHARGEAI_AWS_SESSION_TOKEN) env.AWS_SESSION_TOKEN = env.DISCHARGEAI_AWS_SESSION_TOKEN;
+    else delete env.AWS_SESSION_TOKEN;
+    return "DISCHARGEAI_AWS_*";
+  }
+  return env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY ? "AWS_*" : "none";
+}
+
 /** AgentCore needs an explicit runtime ARN here: the team default in config.ts is another account's. */
 function hostedAgent(env: Record<string, string | undefined>, config: Config): AgentProvider {
   const runtimeArn = env.AGENT_RUNTIME_ARN?.trim();

@@ -2,13 +2,15 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { buildApp } from "../app.js";
 import { attachDictationSocket } from "../dictationSocket.js";
-import { createHostedContext } from "./context.js";
+import { applyHostedAwsCredentials, createHostedContext } from "./context.js";
 
 // The hosted entrypoint (Dockerfile.vercel runs this). One origin serves the built UI and /api.
 if (!existsSync(join(import.meta.dirname, "..", "..", "..", "frontend", "dist", "index.html"))) {
   throw new Error("frontend/dist is missing: build the frontend before starting the hosted server.");
 }
+const awsCredentials = applyHostedAwsCredentials();
 const ctx = await createHostedContext();
+ctx.log.info({ awsCredentials }, "aws credentials source");
 const app = buildApp(ctx);
 ctx.startPurgeTimer();
 const server = app.listen(ctx.config.PORT, ctx.config.HOST, () => {

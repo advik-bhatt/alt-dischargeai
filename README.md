@@ -39,7 +39,7 @@ Environment variables (Vercel project settings):
 | `DOCTOR_EMAIL`, `DOCTOR_PASSWORD` | doctor sign-in | the one provider account; set to the demo account the login screen shows |
 | `PATIENT_APP_URL` | patient links | the deployment's public URL; defaults to `https://$VERCEL_PROJECT_PRODUCTION_URL` |
 | `AGENT_RUNTIME_ARN` | plan generation | an AgentCore runtime the AWS credentials may invoke; the region comes from the ARN |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | plan generation, dictation, translation | temporary hackathon credentials expire and must be replaced when they do |
+| `DISCHARGEAI_AWS_ACCESS_KEY_ID`, `DISCHARGEAI_AWS_SECRET_ACCESS_KEY`, `DISCHARGEAI_AWS_SESSION_TOKEN` | plan generation, dictation, translation | Vercel does not pass the standard `AWS_*` key names to the container, so the server copies these into them at boot. Temporary hackathon credentials expire and must be replaced when they do; `AWS_REGION` is set as usual |
 | `TRANSLATION_PROVIDER` | translation | `ai-infra` runs the AI-Infra translator (Python is in the image); it needs the AWS credentials too |
 | `ELEVENLABS_API_KEY` | read-aloud | optional |
 
