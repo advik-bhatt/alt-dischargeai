@@ -1,6 +1,14 @@
-# DischargeAI backend (branch `backend`)
+# DischargeAI backend
 
 Discharge summaries in (pasted text, a PDF, or dictated audio), a patient link out, and every piece of data self-destructs 30 days after it was created. Node 24, TypeScript, Express 5. The team's DischargeAI agent on Amazon Bedrock AgentCore Runtime writes the summary; the backend stores its whole response as it comes back and serves it.
+
+## Combined application
+
+The frontend and AI source now live beside this backend. See [the root README](../README.md) for combined startup, provider-key access, patient links, and validation. All API routes are also available under `/api`; the server serves the built frontend from `frontend/dist` and resolves `/s/<sumId>` to that page. Swagger uses the same-origin `/api` base URL. `npm run docs:serve` serves Swagger on port 4001 without AWS, and `npm test` runs isolated API/SDK integration checks (build the frontend first).
+
+The original `frontend+backend` design is preserved and its data/actions now call `/api`. `npm run local` from the root serves the connected UI and an isolated backend. Swagger at `/api/docs/` uses provider key `local-test-key`; the server validates the local doctor account `rivera@demo.health` / `demo1234`. Patient/caregiver link forms check the patient's DOB (`2000-01-01` for local patients). The local backend uses in-memory SQLite and labeled AI/speech fixtures and captures email without sending. See [end-to-end testing instructions](../README.md). The normal AWS server still requires the team's resources and production provider sign-in is not configured: `/auth/login` returns 501 outside local mode.
+
+`npm run local:ai` from the root loads ignored `backend/.env` and uses live AgentCore, HealthScribe, AI-Infra translation and ElevenLabs with persistent local SQLite stores in `.local-data`. See the root README for registration, the 30-day append rule and full feature browser checks.
 
 ## Precedence
 
@@ -25,7 +33,7 @@ export AWS_REGION=us-west-2       # optional: this is the default (AWS_DEFAULT_R
 
 Those credentials let the server read `hackhealth/secret`, which supplies the RDS host, user and password and the DynamoDB table name and key, and they are what DynamoDB, S3, the agent and Transcribe use afterwards (the role needs the permissions under "Team infrastructure"). Every other variable below has a default. `DATABASE_URL` replaces the RDS values from the secret when the secret is out of reach, but DynamoDB, S3 and the agent still need the credentials. Change `PROVIDER_API_KEY` from its development default before anyone else can reach the server.
 
-Patients come from the team's own table, `patientinfo` in the `dischargeai` database on RDS (the table `feature/infra-setup` reads with `SELECT * FROM patientinfo`). The backend only reads it and never adds a row. At startup it looks up the table's real column names and maps them to the nine `GET /patients` keys, ignoring case and underscores; the log line `patients table` shows the mapping, names only. The id column may be called `ID`, `patientID` or `uid`. The team's table on RDS has `uid, firstName, lastName, DOB, zipCode, phoneNumber, email, caregiverEmail` and no `caregiverName`, so `ID` is the `uid` value and `caregiverName` is `null`; a key whose column the table lacks is always `null`. If the table is missing or has no id column, startup stops and prints the columns it found.
+Patients come from the team's own table, `patientinfo` in the `dischargeai` database on RDS (the table `feature/infra-setup` reads with `SELECT * FROM patientinfo`). The backend reads it and can register patients through POST /patients, which requires INSERT permission. At startup it looks up the table's real column names and maps them to the nine `GET /patients` keys, ignoring case and underscores; the log line `patients table` shows the mapping, names only. The id column may be called `ID`, `patientID` or `uid`. The team's table on RDS has `uid, firstName, lastName, DOB, zipCode, phoneNumber, email, caregiverEmail` and no `caregiverName`, so `ID` is the `uid` value and `caregiverName` is `null`; a key whose column the table lacks is always `null`. If the table is missing or has no id column, startup stops and prints the columns it found.
 
 RDS port 3306 must be reachable from where the server runs: outside the VPC it exits with `connect ETIMEDOUT`. See "Team infrastructure".
 
@@ -46,7 +54,7 @@ Provider routes need the header `x-provider-key: dev-provider-key` (the `PROVIDE
 | 2 | `pdfToText` (`src/extract/pdfToText.ts`) | converts a PDF buffer to text; the ingester calls it for `type: "pdf"` |
 | 3 | `POST /ingest` (provider) | JSON `{ "data", "type": "text" \| "pdf", "patientID" }`. Before it answers: a PDF is turned into text with `pdfToText` and stored in S3 `emrpdf-rh` (a PDF with no readable text answers `400 unreadable_pdf` and nothing is saved); the text, pasted or extracted, is saved on the DynamoDB item as `raw-text`; the random path `sumId` goes into the SQL `activeLinks` table and becomes the item's `uid`. Then it answers `202 { "statusCode": 202, "message": "ingestion started", "sumId", "link", "jobId", "expiresAt" }`. In the background: the text goes to the DischargeAI agent on AgentCore with the `sumId` as the session id and the call is awaited, the agent's whole response is saved on that item as `llm-summary` (with `sum-id`), and the link is emailed to the patient's `email` and `caregiverEmail` whatever status the agent gave. Nothing is translated. Any other `type` answers `400 { "statusCode": 400, "message": "type must be text or pdf" }` |
 | 4 | `GET /llm-sumary?sum-id=` (patient) | the agent's response from the DynamoDB item, exactly as it came back; `/llm-summary` and `?sum_id=` work too |
-| 5 | `GET /translation?lang=&sum_id=` (patient) | not built yet: answers `501 not_implemented` |
+| 5 | `GET /translation?lang=&sum_id=` (patient) | AI-Infra translation/verification when configured; 501 otherwise |
 
 Errors on every route carry `{ "statusCode", "message" }`. Patient reads answer 404 unknown, 410 expired or deleted (checked at read time, before any sweeper runs), 425 while the agent is still working, 500 when the agent run failed.
 
@@ -135,7 +143,7 @@ While the agent is still working the route answers `425 processing`, so a read r
 
 ### Task 5: `GET /translation?lang=&sum_id=`
 
-Not built yet. Both `/translation` and its earlier spelling `/translate` answer `501 {"statusCode":501,"error":"not_implemented","message":"Translation is not implemented yet"}`:
+Both /translation and /translate call the configured AI-Infra translation agent. Use lang=en/es/zh/ar and sum_id. Non-English responses include translatedPlan, translationStatus and translationProblems; caches are invalidated when notes are appended. Fixture mode returns 501. Example:
 
 ```sh
 curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?lang=es&sum_id=<sumId>"
@@ -147,14 +155,15 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/translation?lang=es&sum
 | --- | --- | --- | --- |
 | GET | `/health` | anyone | clock, configuration source, and where each provider and store points |
 | GET | `/patients` | provider | task 1; takes no parameters and returns the whole table, sorted by last then first name |
+| POST | `/patients` | provider | Register ID/DOB, or match an existing patient; mismatched DOB returns 409 |
 | GET | `/patients/:id` | provider | one patient, with the active link once generated |
 | POST | `/ingest` | provider | task 3; translates nothing. Multipart `patientId` + one of `text`, `file` (PDF), `audio` is kept as an alias (audio comes from the diagram; it is transcribed in the background first, the only input whose text does not exist before the answer) |
 | GET | `/jobs/:jobId` | provider | follow the 202: stage and run metadata (the agent's run time) |
 | POST | `/synthesize` | provider | re-run the agent. `{ text }` sends the text to the agent in a fresh session and returns its response without storing anything; `{ sumId }` (or `linkId`) sends the stored raw text again, with the sum-id as the session id, replaces `llm-summary` and emails the patient if the link had not been sent |
 | GET | `/llm-sumary?sum-id=` | patient | task 4; also `/llm-summary`, `?sum_id=` |
-| GET | `/translation?lang=&sum_id=` | patient | task 5, not built yet (501) |
+| GET | `/translation?lang=&sum_id=` | patient | task 5; AI-Infra translation when configured (501 otherwise) |
 | GET | `/p/:token` | patient | the diagram's patient page, the same body as task 4 |
-| GET | `/summary?link=`, `/translate` | patient | earlier spellings of tasks 4 and 5 (`/translate` answers 501) |
+| GET | `/summary?link=`, `/translate` | patient | earlier spellings of tasks 4 and 5 (translator required) |
 | GET | `/docs`, `/openapi.json` | anyone | OpenAPI 3.0.3, Swagger UI |
 
 `llm-summary` is whatever the agent returned, stored and served without anything added or removed. On the live runtime (`agentcore_app.py` on the `AI-Infra` branch, request `{"notes": "<clinician text>"}`) that is:
@@ -303,6 +312,6 @@ The MariaDB path is written against the mysql2 API and was exercised on a local 
 - Dictate one clip end to end through Transcribe Medical on the EC2 box.
 - The `discharge-summaries` table was recreated on 2026-10-11 at 01:42 UTC with TTL disabled, so DynamoDB's own 30-day deletion is off until `npm run setup-dynamo` (or the console) enables TTL on `expiresAt` again; the purge job still deletes expired items meanwhile.
 - The agent's prompts and graph live on the `AI-Infra` branch; after a change there, `POST /synthesize { sumId }` re-runs a stored summary.
-- Translation (task 5): `GET /translation` answers 501 until it is built.
+- Translation (task 5): set TRANSLATION_PROVIDER=ai-infra and PYTHON_EXECUTABLE; en/es/zh/ar are supported, and unconfigured mode answers 501.
 - `backend/src/dischargeAgent.js` on the `AI-Infra` branch sends `{"prompt"}` and expects `{result}`, but the deployed runtime runs `agentcore_app.py`, which reads `{"notes"}` and returns `{status, flags, summary, plan}`. This backend sends `notes`.
 - Front end: render `llm-summary` from `GET /p/:token` (the agent's `summary` Markdown or its `plan` sections); the email link is `${PATIENT_APP_URL}/s/<sumId>`.
