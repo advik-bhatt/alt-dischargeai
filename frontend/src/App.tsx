@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   restoreSession,
   persistSession,
@@ -11,6 +11,7 @@ import { Login } from "./Login"
 import { DoctorDashboard } from "./DoctorDashboard"
 import { CaregiverView } from "./CaregiverView"
 import { PatientView } from "./PatientView"
+import { Landing } from "./Landing"
 
 // Detect a patient access link (/p/<token>) once at module load. The opaque
 // token is the ONLY identifier permitted in a URL — no name/DOB/MRN (HIPAA 1).
@@ -32,6 +33,18 @@ export default function App() {
   const [signedOutNotice, setSignedOutNotice] = useState<string | undefined>(
     undefined,
   )
+  // Signed-out visitors land on the team's deck at "/"; "/login" and patient links go to sign-in.
+  const [showLogin, setShowLogin] = useState(() => !!initialToken || window.location.pathname === "/login")
+  useEffect(() => {
+    const onPop = () => setShowLogin(!!initialToken || window.location.pathname === "/login")
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
+  const openLogin = () => {
+    window.history.pushState(null, "", "/login")
+    window.scrollTo(0, 0)
+    setShowLogin(true)
+  }
 
   const handleLogin = (next: Session) => {
     persistSession(next)
@@ -52,6 +65,10 @@ export default function App() {
 
   // Idle/session timeout only runs while authenticated (HIPAA item 3).
   useIdleTimeout(session !== null, IDLE_TIMEOUT_MS, handleTimeout)
+
+  if (!session && !showLogin && !signedOutNotice) {
+    return <Landing onSignIn={openLogin} />
+  }
 
   if (!session) {
     return (

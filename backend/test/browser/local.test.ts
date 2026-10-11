@@ -22,7 +22,7 @@ test("the original design works through real HTTP for login, text/PDF/live dicta
     context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
     // No intercepted API responses: the browser reaches the real backend and SQLite repositories.
     const page = await context.newPage();
-    await page.goto(local.origin);
+    await page.goto(local.origin + "/login");
     await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
     assert.equal(await page.getByRole("tab").count(), 3);
     assert.equal(await page.locator(".login-card").count(), 1);
@@ -122,7 +122,7 @@ test("the original design works through real HTTP for login, text/PDF/live dicta
     await page.getByRole("alert").filter({ hasText: "Intentional local test agent failure" }).waitFor();
     assert.equal(local.outbox.length, 6);
     const docs = await context.newPage(); await docs.goto(local.origin + "/api/docs/");
-    await docs.locator(".opblock").first().waitFor(); assert.equal(await docs.locator(".opblock").count(), 16);
+    await docs.locator(".opblock").first().waitFor(); assert.equal(await docs.locator(".opblock").count(), 17);
     local.ctx.clock.advanceDays(31);
     const report = await local.ctx.purge(); assert.equal(report.linksPurged, 1); assert.equal(report.receipts.length, 2);
     await caregiver.reload();
@@ -200,7 +200,7 @@ test("live dictation preserves drafts, recovers from microphone/provider failure
       };
     });
     const page = await context.newPage(); const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
-    await page.goto(local.origin);
+    await page.goto(local.origin + "/login");
     await page.getByLabel("Email", { exact: true }).fill("rivera@demo.health"); await page.getByLabel("Password", { exact: true }).fill("demo1234");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await page.getByRole("heading", { name: "Alex Example", exact: true }).waitFor();

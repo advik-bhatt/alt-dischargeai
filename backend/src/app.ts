@@ -100,7 +100,7 @@ export function buildApp(ctx: AppContext): Express {
   const frontend = join(import.meta.dirname, "..", "..", "frontend", "dist");
   if (existsSync(join(frontend, "index.html"))) {
     app.use(express.static(frontend));
-    app.get(["/s/:token", "/p/:token"], (req, res, next) => {
+    app.get(["/s/:token", "/p/:token", "/login"], (req, res, next) => {
       if (req.path.startsWith("/p/") && !req.get("Accept")?.includes("text/html")) { next(); return; }
       res.setHeader("Cache-Control", "no-store");
       res.sendFile(join(frontend, "index.html"));

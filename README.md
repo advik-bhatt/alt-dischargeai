@@ -6,7 +6,7 @@ Patients leave the hospital with discharge instructions written for clinicians. 
 - The patient link is an unguessable 256-bit id; the patient or caregiver also confirms the patient's date of birth.
 - Every record, file and link expires at day 30, enforced at read time and by automatic deletion, with a deletion receipt that holds no patient data.
 
-The repository holds the web app (`frontend/`), the server (`backend/`), and the agent and translator source (`AI-Infra/`). The server serves the built app and its API (under `/api`) from one origin.
+The repository holds the web app (`frontend/`), the server (`backend/`), and the agent, translator and patient chatbot source (`AI-Infra/`). The server serves the built app and its API (under `/api`) from one origin. Signed-out visitors land on the team's pitch deck at `/` (`frontend/src/Landing.tsx`); `/login` and patient links (`/s/<id>`, `/p/<id>`) go to sign-in. Patients and caregivers can ask questions about their plan from the plan page ("Ask about your plan").
 
 ## Run it
 

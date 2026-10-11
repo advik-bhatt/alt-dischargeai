@@ -78,7 +78,7 @@ The supplied PDF contains 14 pages and five examples. Treat each example as a se
 
 ## Check every API in Swagger
 
-Open **http://127.0.0.1:4000/api/docs/** and authorize with **`local-test-key`**. There are 16 documented operations, including the two login-form adapters. Start with **GET /patients**, then:
+Open **http://127.0.0.1:4000/api/docs/** and authorize with **`local-test-key`**. There are 17 documented operations, including the two login-form adapters and the patient chat (`POST /chat`). Start with **GET /patients**, then:
 
 ```json
 { "patientID": "7", "DOB": "2000-01-01", "type": "text", "data": "Synthetic practice notes" }
