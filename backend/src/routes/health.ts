@@ -19,8 +19,9 @@ export function healthRouter(ctx: AppContext): Router {
         reason: ctx.secrets.reason ?? null,
       },
       providers: {
-        llm: ctx.simplifier.name,
-        llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.ANTHROPIC_MODEL,
+        llm: ctx.agent.name,
+        agentRuntimeArn: ctx.agent.runtimeArn,
+        agentQualifier: ctx.config.AGENT_QUALIFIER ?? "DEFAULT",
         speech: ctx.speechToText.name,
         sqlConnection: ctx.db.describe,
         docStore: ctx.summaries.name,

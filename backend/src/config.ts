@@ -66,11 +66,13 @@ export const ConfigSchema = z.object({
   /** Name of the table's hash key attribute (the secret's dynamodb-table-pk). */
   DYNAMO_PK: z.string().default("uid"),
 
-  LLM_PROVIDER: z.enum(["bedrock", "anthropic"]).default("bedrock"),
   AWS_REGION: z.string().default("us-west-2"),
-  BEDROCK_MODEL_ID: z.string().default("us.anthropic.claude-sonnet-4-6"),
-  ANTHROPIC_API_KEY: optionalString,
-  ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
+  /** The team's DischargeAI agent on Bedrock AgentCore Runtime. */
+  AGENT_RUNTIME_ARN: z.string().default("arn:aws:bedrock-agentcore:us-west-2:183815333909:runtime/DischargeAIAgent_DischargeAI-y8mQ6FEN5u"),
+  /** AgentCore endpoint name; unset means the runtime's DEFAULT endpoint. */
+  AGENT_QUALIFIER: optionalString,
+  /** How long one agent run may take before the job fails (AgentCore stops a synchronous call at 15 minutes). */
+  AGENT_TIMEOUT_MS: int(15 * 60 * 1000),
 
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
 

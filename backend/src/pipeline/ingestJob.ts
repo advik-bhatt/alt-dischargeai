@@ -1,12 +1,11 @@
-import type { AiOutput } from "../contracts/aiOutput.js";
 import type { AppContext } from "../context.js";
 import { logRef } from "../crypto/sumId.js";
 import type { ActiveLink } from "../db/repos/activeLinks.js";
 import type { JobStage } from "../db/repos/jobs.js";
-import type { InputKind, SummaryPatch } from "../docstore/types.js";
+import type { InputKind } from "../docstore/types.js";
 import { caregiverLinkEmail, patientLinkEmail, type LinkEmail } from "../email/templates.js";
 import { normalizeText } from "../extract/text.js";
-import { runPipeline, type PipelineRun } from "./runPipeline.js";
+import type { AgentRun } from "./agent.js";
 
 /**
  * What POST /ingest hands to the background job. Only audio needs it: pasted text and PDFs already
@@ -26,12 +25,12 @@ export function epochSeconds(iso: string): number {
 /**
  * The team contract's async steps after the 202, as a persisted stage machine:
  *   received -> (transcribing: audio only) -> simplifying -> stored -> emailing -> done
- *                                                  \-> needs_review (safety checks failed; no email)
  *   any stage --error--> failed
  * By the time the job runs, the clinician text is already on the summary item as `raw-text`: the
  * route stored pasted text as it came and ran pdfToText on a PDF before answering. The job sends that
- * text to the LLM and waits, saves `llm-summary` and `sum-id` on the same item, then emails the link
- * to the patient and the caregiverEmail. Nothing here translates; GET /translation does that on demand.
+ * text to the DischargeAI agent on AgentCore (session id = the sum-id) and waits, saves the agent's
+ * whole response as `llm-summary` on the same item, then emails the link to the patient and the
+ * caregiverEmail whatever status the agent gave. Nothing here translates.
  */
 export async function runIngestJob(ctx: AppContext, jobId: string, pending?: PendingInput): Promise<void> {
   const { jobs, activeLinks, summaries, audit, clock, log } = ctx;
@@ -67,26 +66,16 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
       await summaries.update(job.sumId, { "raw-text": text, meta: { ...(item.meta ?? {}), transcript: { provider: r.provider, jobName: r.jobName, latencyMs: r.latencyMs } } });
     }
 
-    // 2. Send the text to the LLM, wait, run the safety checks, save the result on the item.
+    // 2. Send the text to the agent, wait, save its response on the item.
     await setStage("simplifying");
     const run = await synthesizeLink(ctx, link, text, job.inputKind);
-    await jobs.setSafety(jobId, run.safety, clock.nowIso());
-    await jobs.mergeMeta(
-      jobId,
-      { provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, llmMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
-      clock.nowIso(),
-    );
+    await jobs.mergeMeta(jobId, { provider: ctx.agent.name, agentRuntimeArn: ctx.agent.runtimeArn, agentMs: run.latencyMs, sourceChars: text.length }, clock.nowIso());
     await setStage("stored");
 
-    // 3. Email the link to the patient and the caregiver, only once the safety checks passed.
-    if (run.verified) {
-      await setStage("emailing");
-      await emailLinks(ctx, link);
-      await setStage("done");
-    } else {
-      await audit.append({ event: "email.skipped", sumId: job.sumId, actor: "system", at: clock.nowIso(), details: { reason: "needs_review", safetyReason: run.safety.reason } });
-      await setStage("needs_review");
-    }
+    // 3. Email the link to the patient and the caregiver.
+    await setStage("emailing");
+    await emailLinks(ctx, link);
+    await setStage("done");
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     log.error({ jobId, link: ref, err: { name: (err as Error)?.name, message } }, "job failed");
@@ -98,40 +87,24 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
 }
 
 /**
- * Sends the clinician text for a link through the LLM and the safety checks and saves the result on
- * the summary item: `llm-summary` (the English fixed JSON), `sum-id`, `status`, the safety result and
- * the run metadata. Shared by the ingest job and POST /synthesize { sumId }. No translation unless
- * `languages` is passed (only POST /synthesize does, on explicit request); translations made on demand
- * earlier were made from the previous English, so a re-run clears them and GET /translation rebuilds
- * them when a patient asks. Throws on a provider failure; the caller marks the job.
+ * Sends the clinician text for a link to the DischargeAI agent, with the link's sum-id as the
+ * AgentCore session id, and saves the agent's whole response on the summary item as `llm-summary`
+ * (plus `sum-id`, `status: ready` and the run metadata). Shared by the ingest job and
+ * POST /synthesize { sumId }. Throws when the agent fails; the caller marks the job.
  */
-export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: string, inputKind: InputKind, languages: string[] = []): Promise<PipelineRun> {
-  const { activeLinks, summaries, clock } = ctx;
-
-  const run = await runPipeline(
-    { rawText: text, languages },
-    { speechToText: ctx.speechToText, simplifier: ctx.simplifier, translator: ctx.translator, log: ctx.log, now: () => clock.now() },
-  );
-
-  const translations: Record<string, AiOutput> = {};
-  for (const [lang, output] of Object.entries(run.perLanguage)) if (lang !== "en") translations[lang] = output;
+export async function synthesizeLink(ctx: AppContext, link: ActiveLink, text: string, inputKind: InputKind): Promise<AgentRun> {
+  const { activeLinks, summaries } = ctx;
+  const run = await ctx.agent.invoke(text, link.sumId);
   const current = await summaries.get(link.sumId);
-  const status = run.verified ? "ready" : "needs_review";
-  const patch: SummaryPatch = {
-    "llm-summary": run.perLanguage.en,
+  await summaries.update(link.sumId, {
+    "llm-summary": run.response,
     "sum-id": link.sumId,
-    status,
+    status: "ready",
     inputKind,
-    safety: run.safety,
-    meta: { ...(current?.meta ?? {}), provider: run.meta.provider, model: run.meta.model, usage: run.meta.usage, latencyMs: run.meta.latencyMs, sourceChars: run.meta.sourceChars },
-  };
-  // Only touch `translations` when there is something to replace or to write.
-  if (Object.keys(translations).length || Object.keys(current?.translations ?? {}).length) patch.translations = translations;
-  await summaries.update(link.sumId, patch);
-  const produced = ["en", ...Object.keys(translations)];
-  await activeLinks.setLanguages(link.sumId, produced);
-  await activeLinks.setStatus(link.sumId, status);
-  ctx.log.info({ link: logRef(link.sumId), verified: run.verified, languages: produced, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs }, "lane 3 finished");
+    meta: { ...(current?.meta ?? {}), provider: ctx.agent.name, agentRuntimeArn: ctx.agent.runtimeArn, latencyMs: run.latencyMs, sourceChars: text.length },
+  });
+  await activeLinks.setStatus(link.sumId, "ready");
+  ctx.log.info({ link: logRef(link.sumId), latencyMs: run.latencyMs }, "agent response saved");
   return run;
 }
 

@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { AppContext } from "../context.js";
 import { logRef } from "../crypto/sumId.js";
 
-/** GET /jobs/:jobId (provider): follow the 202. Stage, the safety-check result and run metadata; no patient text. */
+/** GET /jobs/:jobId (provider): follow the 202. Stage and run metadata; no patient text. */
 export function jobsRouter(ctx: AppContext): Router {
   const r = Router();
   r.get("/jobs/:jobId", async (req, res) => {
@@ -17,9 +17,6 @@ export function jobsRouter(ctx: AppContext): Router {
       stage: job.stage,
       inputKind: job.inputKind,
       error: job.error,
-      safety: job.safety,
-      verified: job.safety ? job.safety.passed : null,
-      languages: link?.languages ?? [],
       meta: job.meta,
       sumId: job.sumId,
       linkRef: logRef(job.sumId),

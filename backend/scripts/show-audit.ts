@@ -27,12 +27,12 @@ let entries: AuditEntry[];
 let heading: string;
 if (linkArg) {
   if (!isSumIdShaped(linkArg)) {
-    console.error("--link expects the 22-character sumId");
+    console.error("--link expects the 43-character sumId");
     process.exit(2);
   }
   entries = await ctx.audit.listForLink(linkArg);
   const link = await ctx.activeLinks.getBySumId(linkArg);
-  heading = `summary ${linkArg}: status=${link?.status ?? "unknown"} expiresAt=${link?.expiresAt ?? "?"} languages=${JSON.stringify(link?.languages ?? [])}`;
+  heading = `summary ${linkArg}: status=${link?.status ?? "unknown"} expiresAt=${link?.expiresAt ?? "?"}`;
 } else if (receiptsOnly) {
   const receipts = await ctx.receipts.list();
   await ctx.close();

@@ -1,6 +1,6 @@
 import type { Db } from "../index.js";
 
-export type LinkStatus = "pending" | "ready" | "needs_review" | "failed" | "expired" | "purged";
+export type LinkStatus = "pending" | "ready" | "failed" | "expired" | "purged";
 
 /** The team contract's activeLinks row (id auto, sumId, patientID, createdAt, expiresAt, status) plus the backend's bookkeeping columns. */
 export interface ActiveLinkRow {
@@ -10,7 +10,6 @@ export interface ActiveLinkRow {
   createdAt: string;
   expiresAt: string;
   status: LinkStatus;
-  languages: string;
   pdfKey: string | null;
   audioKey: string | null;
   lastViewedAt: string | null;
@@ -25,23 +24,12 @@ export interface ActiveLink {
   createdAt: string;
   expiresAt: string;
   status: LinkStatus;
-  /** Languages the summary item currently holds, English first. */
-  languages: string[];
   /** Object key of the PDF in the PDF bucket (emrpdf-rh), when the input was a PDF. */
   pdfKey: string | null;
   /** Object key of the audio clip in the audio bucket (emraudio-rh), when the input was audio. */
   audioKey: string | null;
   lastViewedAt: string | null;
   emailedAt: string | null;
-}
-
-function parseLanguages(s: string | null | undefined): string[] {
-  try {
-    const v = JSON.parse(s ?? "[]") as unknown;
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
 }
 
 function toRecord(r: ActiveLinkRow): ActiveLink {
@@ -52,7 +40,6 @@ function toRecord(r: ActiveLinkRow): ActiveLink {
     createdAt: r.createdAt,
     expiresAt: r.expiresAt,
     status: r.status,
-    languages: parseLanguages(r.languages),
     pdfKey: r.pdfKey,
     audioKey: r.audioKey,
     lastViewedAt: r.lastViewedAt,
@@ -68,14 +55,13 @@ export class ActiveLinksRepo {
     patientID: string;
     createdAt: string;
     expiresAt: string;
-    languages?: string[];
     pdfKey?: string | null;
     audioKey?: string | null;
   }): Promise<ActiveLink> {
     await this.db.run(
-      `INSERT INTO activeLinks (sumId, patientID, createdAt, expiresAt, status, languages, pdfKey, audioKey)
-       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
-      [input.sumId, input.patientID, input.createdAt, input.expiresAt, JSON.stringify(input.languages ?? []), input.pdfKey ?? null, input.audioKey ?? null],
+      `INSERT INTO activeLinks (sumId, patientID, createdAt, expiresAt, status, pdfKey, audioKey)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+      [input.sumId, input.patientID, input.createdAt, input.expiresAt, input.pdfKey ?? null, input.audioKey ?? null],
     );
     return (await this.getBySumId(input.sumId))!;
   }
@@ -87,18 +73,6 @@ export class ActiveLinksRepo {
 
   async setStatus(sumId: string, status: LinkStatus): Promise<void> {
     await this.db.run("UPDATE activeLinks SET status = ? WHERE sumId = ?", [status, sumId]);
-  }
-
-  async setLanguages(sumId: string, languages: string[]): Promise<void> {
-    await this.db.run("UPDATE activeLinks SET languages = ? WHERE sumId = ?", [JSON.stringify([...new Set(languages)]), sumId]);
-  }
-
-  /** Records that the summary item now holds this language. Returns the full list. */
-  async addLanguage(sumId: string, language: string): Promise<string[]> {
-    const current = (await this.getBySumId(sumId))?.languages ?? [];
-    const next = [...new Set([...current, language])];
-    await this.setLanguages(sumId, next);
-    return next;
   }
 
   async setPdfKey(sumId: string, pdfKey: string | null): Promise<void> {

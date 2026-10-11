@@ -10,8 +10,6 @@ export type AuditEvent =
   | "email.queued"
   | "email.skipped"
   | "summary.viewed"
-  | "translation.created"
-  | "translation.viewed"
   | "synthesize.run"
   | "link.expired"
   | "link.purged"

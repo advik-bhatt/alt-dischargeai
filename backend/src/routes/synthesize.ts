@@ -1,47 +1,33 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { AppContext } from "../context.js";
-import { isSumIdShaped, logRef } from "../crypto/sumId.js";
+import { isSumIdShaped, logRef, newSumId } from "../crypto/sumId.js";
 import { AppError, badRequest, gone, notFound } from "../errors.js";
 import { emailLinks, synthesizeLink } from "../pipeline/ingestJob.js";
-import { normalizeLanguage, resolveLanguages } from "../pipeline/languages.js";
-import { runPipeline } from "../pipeline/runPipeline.js";
 
 const Body = z.object({
   sumId: z.string().trim().optional(),
   linkId: z.string().trim().optional(),
   text: z.string().optional(),
-  language: z.string().trim().optional(),
-  languages: z.array(z.string().trim()).optional(),
 });
 
 /**
- * POST /synthesize (provider): the diagram's lane-3 entry point, so the teammate who owns the LLM
- * agent can re-run the pipeline after a prompt change without a new ingest.
- *   { text, language?, languages? }   runs jargon-to-plain-language -> safety checks over the given text
- *                                     and returns the fixed JSON (nothing stored); translates only into
- *                                     the languages named in the request
- *   { sumId, language?, languages? }  re-runs the LLM step over the raw-text stored on the summary item,
- *                                     replaces llm-summary, clears translations made from the old
- *                                     English, sets the status (ready | needs_review) and emails the
- *                                     patient and caregiver if the link had not been sent yet
- *                                     (`linkId` is accepted for `sumId`)
- * Ingestion itself never translates; this route does so only when the caller names languages.
- * Safety-check results come back under `safety`, next to the per-language JSON, never inside it.
+ * POST /synthesize (provider): the diagram's lane-3 entry point, so the teammate who owns the agent
+ * can re-run it after a change without a new ingest.
+ *   { text }    sends the text to the DischargeAI agent in a fresh session and returns its response
+ *               as it came back; nothing is stored
+ *   { sumId }   sends the raw-text stored on the summary item to the agent again (session id = the
+ *               sum-id), replaces llm-summary with the new response and emails the patient and the
+ *               caregiver if the link had not been sent yet (`linkId` is accepted for `sumId`)
  */
 export function synthesizeRouter(ctx: AppContext): Router {
   const r = Router();
 
   r.post("/synthesize", async (req, res) => {
     const body = Body.parse(req.body ?? {});
-    const extras = body.languages ?? [];
-    for (const l of [body.language, ...extras]) {
-      if (l && !normalizeLanguage(l)) throw badRequest("invalid_language", `"${l}" is not a BCP-47 code or a language name`);
-    }
-
     const sumId = body.sumId ?? body.linkId;
     if (sumId) {
-      if (!isSumIdShaped(sumId)) throw badRequest("invalid_link", "sumId must be the 22-character id returned by POST /ingest");
+      if (!isSumIdShaped(sumId)) throw badRequest("invalid_link", "sumId must be the 43-character id returned by POST /ingest");
       const link = await ctx.activeLinks.getBySumId(sumId);
       if (!link) throw notFound("link_not_found", "No summary with that id");
       if (link.status === "purged") throw gone("link_purged", "This summary was permanently deleted after 30 days");
@@ -56,44 +42,21 @@ export function synthesizeRouter(ctx: AppContext): Router {
       const text = item?.["raw-text"];
       if (!item || !text) throw new AppError(409, "no_source_text", "No clinician text is stored for this summary yet (an audio ingest stores it after transcription)");
 
-      const requested = resolveLanguages(body.language, extras).languages;
-      const run = await synthesizeLink(ctx, link, text, item.inputKind, requested);
+      const run = await synthesizeLink(ctx, link, text, item.inputKind);
       let emailed = !!link.emailedAt;
-      if (run.verified && !link.emailedAt) {
+      if (!link.emailedAt) {
         await emailLinks(ctx, link);
         emailed = true;
       }
-      const after = (await ctx.activeLinks.getBySumId(sumId))!;
-      await ctx.audit.append({ event: "synthesize.run", sumId, actor: "provider", at: ctx.clock.nowIso(), details: { verified: run.verified, languages: after.languages, provider: run.meta.provider, model: run.meta.model, latencyMs: run.meta.latencyMs, emailed } });
-      res.json({
-        stored: true,
-        sumId,
-        linkRef: logRef(sumId),
-        status: after.status,
-        verified: run.verified,
-        emailed,
-        languages: after.languages,
-        perLanguage: run.perLanguage,
-        safety: run.safety,
-        meta: run.meta,
-        expiresAt: after.expiresAt,
-      });
+      await ctx.audit.append({ event: "synthesize.run", sumId, actor: "provider", at: ctx.clock.nowIso(), details: { provider: ctx.agent.name, latencyMs: run.latencyMs, emailed } });
+      res.json({ stored: true, sumId, linkRef: logRef(sumId), status: "ready", emailed, "llm-summary": run.response, latencyMs: run.latencyMs, expiresAt: link.expiresAt });
       return;
     }
 
     const text = (body.text ?? "").trim();
-    if (!text) throw badRequest("empty_input", "Provide { sumId } or { text, language(s) }");
-    const { languages } = resolveLanguages(body.language, extras);
-    const run = await runPipeline({ rawText: text, languages }, { speechToText: ctx.speechToText, simplifier: ctx.simplifier, translator: ctx.translator, log: ctx.log, now: () => ctx.clock.now() });
-    res.json({
-      stored: false,
-      status: run.verified ? "ready" : "needs_review",
-      verified: run.verified,
-      languages: Object.keys(run.perLanguage),
-      perLanguage: run.perLanguage,
-      safety: run.safety,
-      meta: run.meta,
-    });
+    if (!text) throw badRequest("empty_input", "Provide { sumId } or { text }");
+    const run = await ctx.agent.invoke(text, newSumId());
+    res.json({ stored: false, "llm-summary": run.response, latencyMs: run.latencyMs });
   });
 
   return r;

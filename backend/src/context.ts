@@ -15,9 +15,8 @@ import { createLogger, type Logger } from "./logger.js";
 import { runIngestJob, type PendingInput } from "./pipeline/ingestJob.js";
 import { runPurge, type PurgeReport } from "./pipeline/purge.js";
 import { JobQueue } from "./pipeline/queue.js";
-import { createSimplifier, type Simplifier } from "./pipeline/simplify.js";
+import { createAgent, type DischargeAgent } from "./pipeline/agent.js";
 import { createSpeechToText, type SpeechToText } from "./pipeline/speechToText.js";
-import { createTranslator, type Translator } from "./pipeline/translate.js";
 import type { SecretsBootstrapResult } from "./secrets.js";
 
 export const NO_SECRETS: SecretsBootstrapResult = { source: "env", applied: [], overriddenByEnv: [], missingKeys: [], reason: "not attempted", ms: 0 };
@@ -42,8 +41,8 @@ export interface AppContext {
   audio: ObjectStore;
   /** Deletion receipts sink (sql by default). */
   receipts: AuditSink;
-  simplifier: Simplifier;
-  translator: Translator;
+  /** The DischargeAI agent on Bedrock AgentCore Runtime. */
+  agent: DischargeAgent;
   speechToText: SpeechToText;
   mailer: Mailer;
   emailQueue?: EmailQueue;
@@ -91,8 +90,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   log.info({ pdf: stores.pdf.describe(), audio: stores.audio.describe() }, "object stores");
   const receipts = await createAuditSink(config, { audit });
 
-  const simplifier = await createSimplifier(config, log);
-  const translator = await createTranslator(config, log);
+  const agent = createAgent(config, log);
   const speechToText = await createSpeechToText(config, log);
   const mailer = await createMailer(config, log);
   const emailQueue =
@@ -116,8 +114,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     pdf: stores.pdf,
     audio: stores.audio,
     receipts,
-    simplifier,
-    translator,
+    agent,
     speechToText,
     mailer,
     emailQueue,
