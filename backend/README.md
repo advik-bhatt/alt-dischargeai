@@ -12,7 +12,7 @@ The team's written backend tasks doc ("HealthHack Backend Tasks") is the contrac
 cd backend && npm install && npm run dev
 ```
 
-Node 24 (`.nvmrc`; `engines` is `>=24`). With nothing configured the backend runs fully local: SQLite, the SQL twin of the DynamoDB table, local folders for PDFs and audio, offline AI providers driven by fixtures, and the console email transport. Docs are at `http://localhost:4000/docs`.
+Node 24 (`.nvmrc`; `engines` is `>=24`). With nothing configured the backend runs fully local: SQLite, the SQL twin of the DynamoDB table, local folders for PDFs and audio, offline AI providers driven by fixtures, and the console email transport. Swagger docs are at `http://localhost:4000/docs` (the raw spec at `/openapi.json`, both read from `openapi.yaml`); `npm run docs` also writes a standalone copy to `docs/swagger.html` that opens from disk (needs internet for Swagger UI; "Try it out" works only on the live `/docs`), and a test fails when that file is out of date.
 
 Patients come from the team's own table, `patientinfo` in the `dischargeai` database on RDS (the table `feature/infra-setup` reads with `SELECT * FROM patientinfo`). The backend only reads it and never adds a row. At startup it looks up the table's real column names and maps them to the nine `GET /patients` keys, ignoring case and underscores; the log line `patients table` shows the mapping, names only. The id column may be called `ID`, `patientID` or `uid`. The team's table on RDS has `uid, firstName, lastName, DOB, zipCode, phoneNumber, email, caregiverEmail` and no `caregiverName`, so `ID` is the `uid` value and `caregiverName` is `null`; a key whose column the table lacks is always `null`. If the table is missing or has no id column, startup stops and prints the columns it found. A fresh local SQLite file starts with an empty `patientinfo`; `npm run seed` adds six synthetic patients there (`pt-0001` to `pt-0006`, `@example.test` addresses) so the curls below have someone to ingest for. It refuses MySQL, so it can never touch the team's table.
 
@@ -179,7 +179,7 @@ Run on 2026-10-10 in the build container with the offline providers on SQLite: e
 | GET | `/translation?lang=&sum_id=` | patient | task 5 |
 | GET | `/p/:token[?language=]` | patient | the diagram's patient page on the same handler |
 | GET | `/summary?link=`, `/translate?link=&language=` | patient | earlier spellings of tasks 4 and 5, kept as aliases |
-| GET | `/docs`, `/openapi.json` | anyone | OpenAPI 3 |
+| GET | `/docs`, `/openapi.json` | anyone | OpenAPI 3.0.3, Swagger UI |
 
 The plain-language JSON (`contracts/ai-output.schema.json`, `contracts/ai-output.ts`), exactly these keys per language:
 
@@ -286,7 +286,7 @@ Copy `.env.example` to `.env`. Everything has a local default.
 | `EMAIL_QUEUE`, `SQS_QUEUE_URL` | `none`, unset | `sqs` enqueues instead of sending; `npm run email-worker` consumes |
 | `MAX_UPLOAD_BYTES` | 15 MB | PDF and audio limit (a base64 PDF in JSON may be about 1.4 times that) |
 
-Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sample-entry`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `setup-s3`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
+Scripts: `dev`, `start`, `test`, `typecheck`, `demo`, `seed`, `sample-entry`, `sweep`, `show-audit`, `check-sql`, `fetch-rds-bundle`, `setup-dynamo`, `setup-s3`, `ensure-s3-lifecycle`, `verify-infra`, `live-ingest`, `email-worker`, `export-contract`, `docs`, `make-fixture-pdf`. `docker-compose.yml` and `scripts/dynamodb-local.sh` run DynamoDB Local for `DOC_STORE=dynamo` without the team account.
 
 ## How the data lives and dies
 
