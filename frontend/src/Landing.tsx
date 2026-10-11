@@ -94,6 +94,13 @@ const steps = [
   { title: "The clinician adds notes", body: "Dictate, upload a PDF, or paste the discharge notes exactly as they are written today." },
   { title: "Discharge AI writes the plan", body: "Medicines and follow-up visits in plain words. Anything a clinician should double-check is flagged." },
   { title: "The patient opens a private link", body: "They confirm their date of birth and see today's medicines and their next visit. No account needed." },
+  { title: "They check in every day for 30 days", body: "Medicines taken, warning signs from their own plan, weight, and one question to check they remember. Problems show up on the care team's dashboard." },
+]
+
+const safeguards = [
+  { title: "Quoted, not invented", body: "Every line of the plan carries word-for-word quotes from the clinician's notes, and code checks that each quote is really there." },
+  { title: "Reviewed before it's sent", body: "A second agent checks the plan against the notes for anything missing, wrong or made up, plus the reading level. Flagged lines are fixed and checked again." },
+  { title: "Unsure goes to a clinician", body: "An unclear medicine name or a problem that can't be fixed marks the plan for a clinician to check instead of approving it." },
 ]
 
 const features: { icon: keyof typeof paths; title: string; body: string }[] = [
@@ -126,6 +133,7 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
         <nav aria-label="Sections" className="gh-nav-links">
           <a href="#how">How it works</a>
           <a href="#features">Features</a>
+          <a href="#safety">Safety</a>
           <a href="#privacy">Privacy</a>
         </nav>
         <div className="gh-nav-actions">
@@ -215,6 +223,24 @@ export function Landing({ onSignIn }: { onSignIn: () => void }) {
                   <span className="gh-feature-icon"><Glyph name={f.icon} /></span>
                   <h3>{f.title}</h3>
                   <p>{f.body}</p>
+                </Reveal>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="safety-title" className="gh-section gh-band" id="safety">
+          <Reveal className="gh-section-head">
+            <p className="gh-kicker">Safety</p>
+            <h2 id="safety-title">Every line traces back to the clinician's notes.</h2>
+          </Reveal>
+          <ul className="gh-features">
+            {safeguards.map((g, i) => (
+              <li key={g.title}>
+                <Reveal delay={i * 90}>
+                  <span className="gh-feature-icon"><Glyph name="check" /></span>
+                  <h3>{g.title}</h3>
+                  <p>{g.body}</p>
                 </Reveal>
               </li>
             ))}

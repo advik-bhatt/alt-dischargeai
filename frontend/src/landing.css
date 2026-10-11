@@ -163,7 +163,7 @@
 .gh-compare-arrow { color: var(--gh-teal-ink); transform: rotate(90deg); width: 22px; }
 
 /* Steps: numbered, joined by one rule */
-.gh-steps { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(24px, 4vw, 56px); margin: 0 auto; padding: 0; list-style: none; }
+.gh-steps { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(24px, 4vw, 56px); margin: 0 auto; padding: 0; list-style: none; }
 .gh-steps::before { content: ""; position: absolute; top: 22px; left: 22px; right: 22px; height: 1px; background: var(--gh-line); }
 .gh-steps li { position: relative; }
 .gh-step-num { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 22px; border-radius: 50%; background: var(--gh-teal); color: var(--gh-white); font-family: "Manrope", sans-serif; font-weight: 700; position: relative; }
@@ -172,6 +172,7 @@
 
 /* Features: a 3-column grid on hairlines */
 .gh-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--gh-line); }
+.gh-band > .gh-features { margin-left: auto; margin-right: auto; }
 .gh-features li { padding: 32px 32px 36px 0; border-bottom: 1px solid var(--gh-line); }
 .gh-features li:not(:nth-child(3n + 1)) { padding-left: 32px; border-left: 1px solid var(--gh-line); }
 .gh-feature-icon { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 18px; border-radius: 12px; background: var(--gh-care-soft); color: var(--gh-teal); }
@@ -217,6 +218,8 @@
   .gh-stats dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gh-stat:nth-child(3) { padding-left: 0; border-left: 0; }
   .gh-stat:nth-child(n + 3) { border-top: 1px solid var(--gh-line); margin-top: 28px; }
+  .gh-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gh-steps::before { display: none; }
   .gh-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gh-features li:not(:nth-child(3n + 1)) { padding-left: 0; border-left: 0; }
   .gh-features li:nth-child(2n) { padding-left: 28px; border-left: 1px solid var(--gh-line); }
