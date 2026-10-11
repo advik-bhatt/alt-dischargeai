@@ -8,4 +8,3 @@ export function createSummaryStore(config: Config): SummaryStore {
 }
 
 export type { SummaryStore, SummaryItem, SummaryPatch, SummaryStatus, SummaryMeta, InputKind } from "./types.js";
-export { languagesOf } from "./types.js";

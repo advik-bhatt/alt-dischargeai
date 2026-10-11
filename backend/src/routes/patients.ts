@@ -26,7 +26,7 @@ export function patientsRouter(ctx: AppContext): Router {
     res.json({
       ...toContractPatient(p),
       preferredLanguage: p.preferredLanguage,
-      activeLink: link ? { sumId: link.sumId, link: ctx.patientUrl(link.sumId), status: link.status, createdAt: link.createdAt, expiresAt: link.expiresAt, languages: link.languages } : null,
+      activeLink: link ? { sumId: link.sumId, link: ctx.patientUrl(link.sumId), status: link.status, createdAt: link.createdAt, expiresAt: link.expiresAt } : null,
     });
   });
 

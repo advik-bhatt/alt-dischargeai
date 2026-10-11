@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { InputKind } from "../../docstore/types.js";
-import type { PipelineSafety } from "../../pipeline/types.js";
 import type { Db } from "../index.js";
 
 export type JobStage =
@@ -10,10 +9,9 @@ export type JobStage =
   | "stored"
   | "emailing"
   | "done"
-  | "needs_review"
   | "failed";
 
-export const TERMINAL_STAGES: ReadonlySet<JobStage> = new Set(["done", "needs_review", "failed"]);
+export const TERMINAL_STAGES: ReadonlySet<JobStage> = new Set(["done", "failed"]);
 
 export type { InputKind };
 
@@ -23,7 +21,6 @@ export interface JobRow {
   stage: JobStage;
   input_kind: InputKind;
   error: string | null;
-  safety: string | null;
   meta: string | null;
   created_at: string;
   updated_at: string;
@@ -35,8 +32,6 @@ export interface JobRecord {
   stage: JobStage;
   inputKind: InputKind;
   error: string | null;
-  /** The deterministic safety-check result once the pipeline ran; null before that. */
-  safety: PipelineSafety | null;
   meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -58,7 +53,6 @@ function toRecord(r: JobRow): JobRecord {
     stage: r.stage,
     inputKind: r.input_kind,
     error: r.error,
-    safety: parseJson<PipelineSafety | null>(r.safety, null),
     meta: parseJson<Record<string, unknown>>(r.meta, {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -92,10 +86,6 @@ export class JobsRepo {
     await this.db.run("UPDATE jobs SET stage = ?, error = ?, updated_at = ? WHERE id = ?", [stage, error ?? null, now, id]);
   }
 
-  async setSafety(id: string, safety: PipelineSafety, now: string): Promise<void> {
-    await this.db.run("UPDATE jobs SET safety = ?, updated_at = ? WHERE id = ?", [JSON.stringify(safety), now, id]);
-  }
-
   async mergeMeta(id: string, patch: Record<string, unknown>, now: string): Promise<void> {
     const current = await this.get(id);
     const meta = { ...(current?.meta ?? {}), ...patch };
@@ -103,6 +93,7 @@ export class JobsRepo {
   }
 
   async listUnfinished(): Promise<JobRecord[]> {
+    // needs_review is a terminal stage older versions wrote; such jobs are never resumed.
     const rows = await this.db.all<JobRow>("SELECT * FROM jobs WHERE stage NOT IN ('done', 'needs_review', 'failed') ORDER BY created_at");
     return rows.map(toRecord);
   }

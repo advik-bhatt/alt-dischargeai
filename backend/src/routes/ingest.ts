@@ -47,9 +47,9 @@ const MAX_LLM_CHARS = 200_000;
  * fails with 400 "type must be text or pdf"; a PDF that holds no readable text fails with 400 too,
  * before anything is saved. Then it answers 202 "ingestion started".
  *
- * After the answer, in the background: send the text to the LLM and wait, save `llm-summary` and
- * `sum-id` on the same item, email the link to the patient and the caregiver. No translation: that is
- * GET /translation, on demand. Multipart (patientId + text | file | audio) is accepted as an alias;
+ * After the answer, in the background: send the text to the DischargeAI agent on AgentCore (session
+ * id = the sum-id) and wait, save its whole response as `llm-summary` on the same item, email the link
+ * to the patient and the caregiver. Nothing is translated. Multipart (patientId + text | file | audio) is accepted as an alias;
  * audio is transcribed in the background first because speech to text is too slow to wait for.
  */
 export function ingestRouter(ctx: AppContext): Router {

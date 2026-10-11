@@ -16,7 +16,7 @@ const server = app.listen(ctx.config.PORT, ctx.config.HOST, () => {
       docStore: ctx.summaries.name,
       pdfStore: ctx.pdf.describe(),
       node: process.version,
-      llm: ctx.simplifier.name,
+      llm: ctx.agent.name,
       speech: ctx.speechToText.name,
       email: ctx.mailer.transportName,
       demoNow: ctx.clock.demoNow,

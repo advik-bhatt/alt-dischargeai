@@ -16,7 +16,6 @@ import { patientLinkRouter } from "./routes/patientLink.js";
 import { patientsRouter } from "./routes/patients.js";
 import { summaryRouter } from "./routes/summary.js";
 import { synthesizeRouter } from "./routes/synthesize.js";
-import { translateRouter } from "./routes/translate.js";
 import { translationRouter } from "./routes/translation.js";
 
 export const OPENAPI_FILE = join(import.meta.dirname, "..", "openapi.yaml");
@@ -75,7 +74,6 @@ export function buildApp(ctx: AppContext): Express {
   app.use(llmSummaryRouter(ctx));
   app.use(translationRouter(ctx));
   app.use(summaryRouter(ctx));
-  app.use(translateRouter(ctx));
   app.use(patientLinkRouter(ctx));
 
   app.use((_req, res) => res.status(404).json({ statusCode: 404, error: "not_found", message: "No such route" }));

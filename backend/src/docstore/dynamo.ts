@@ -1,6 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand, UpdateCommand, type ScanCommandOutput } from "@aws-sdk/lib-dynamodb";
-import type { AiOutput } from "../contracts/aiOutput.js";
 import type { SummaryItem, SummaryPatch, SummaryStore } from "./types.js";
 
 export interface DynamoOptions {
@@ -78,46 +77,6 @@ export class DynamoSummaryStore implements SummaryStore {
         ConditionExpression: "attribute_exists(#k)",
       }),
     );
-  }
-
-  /**
-   * Sets translations[lang]. Ingestion does not create the `translations` map, so the first
-   * translation creates it: the nested SET fails when the map is missing ("document path invalid"),
-   * the map is then created with this language in it (only if still missing), and a concurrent
-   * writer that created it first makes this one fall back to the nested SET.
-   */
-  async setTranslation(uid: string, lang: string, output: AiOutput): Promise<void> {
-    const nested = () =>
-      this.doc.send(
-        new UpdateCommand({
-          TableName: this.table,
-          Key: this.keyFor(uid),
-          UpdateExpression: "SET #t.#lang = :v",
-          ExpressionAttributeNames: { "#t": "translations", "#lang": lang, "#k": this.key },
-          ExpressionAttributeValues: { ":v": output },
-          ConditionExpression: "attribute_exists(#k)",
-        }),
-      );
-    try {
-      await nested();
-    } catch (err) {
-      if ((err as { name?: string }).name !== "ValidationException") throw err;
-      try {
-        await this.doc.send(
-          new UpdateCommand({
-            TableName: this.table,
-            Key: this.keyFor(uid),
-            UpdateExpression: "SET #t = :m",
-            ExpressionAttributeNames: { "#t": "translations", "#k": this.key },
-            ExpressionAttributeValues: { ":m": { [lang]: output } },
-            ConditionExpression: "attribute_exists(#k) AND attribute_not_exists(#t)",
-          }),
-        );
-      } catch (err2) {
-        if ((err2 as { name?: string }).name !== "ConditionalCheckFailedException") throw err2;
-        await nested();
-      }
-    }
   }
 
   async delete(uid: string): Promise<boolean> {

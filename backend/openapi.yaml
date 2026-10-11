@@ -3,20 +3,17 @@ info:
   title: DischargeAI backend
   version: 0.2.0
   description: |
-    Discharge summaries in (pasted text, a PDF, or dictated audio), a plain-language patient link out,
-    every piece of data self-destructs 30 days after it was created.
+    Discharge summaries in (pasted text, a PDF, or dictated audio), a patient link out, every piece of
+    data self-destructs 30 days after it was created.
 
     Surface: the API note first, the team architecture diagram where the note is silent.
     Provider endpoints need the `x-provider-key` header. Patient endpoints are authenticated by the
-    unguessable 128-bit link id (22 base64url characters) and need no header.
+    unguessable 256-bit link id (43 base64url characters) and need no header.
 
-    Translation is not part of ingestion: POST /ingest takes no language and ends with the English
-    summary. A language is taken only where a patient or provider asks for one (GET /translation and its
-    aliases, POST /synthesize); any BCP-47 code or English language name the model supports is accepted
-    there (en, es (Spanish), zh (Mandarin) and ar (Arabic) are the ones tried).
-    Names recognised: English, Spanish, Mandarin/Chinese, Arabic, Portuguese, French, Haitian Creole,
-    Russian, Korean, Vietnamese, Tagalog/Filipino, Hindi, Gujarati, Polish, Italian, German, Japanese,
-    Urdu, Bengali, Persian/Farsi. Medication names and doses are never translated.
+    The summary is written by the team's DischargeAI agent on Amazon Bedrock AgentCore Runtime. The
+    sum-id is the AgentCore session id, and the agent's response is stored and returned exactly as it
+    came back (on the live runtime: status, flags, summary, plan). Translation is not built yet:
+    GET /translation and GET /translate answer 501.
 servers:
   - url: http://localhost:4000
 tags:
@@ -34,25 +31,19 @@ components:
     sumIdHyphen:
       name: sum-id
       in: query
-      description: "The sumId from POST /ingest (22 characters). The tasks doc's spelling; sum_id is accepted too"
-      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+      description: "The sumId from POST /ingest (43 characters). The tasks doc's spelling; sum_id is accepted too"
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
     sumIdUnderscore:
       name: sum_id
       in: query
       description: The same id, as GET /translation spells it
-      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
     link:
       name: link
       in: query
       required: true
-      description: The 22-character link id from the patient's email.
-      schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
-    language:
-      name: language
-      in: query
-      required: false
-      description: BCP-47 code or English language name (e.g. es, Spanish, zh, ar). Defaults to English, the stored LLM response.
-      schema: { type: string }
+      description: The 43-character link id from the patient's email.
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }
   schemas:
     Error:
       type: object
@@ -93,94 +84,40 @@ components:
                 status: { type: string }
                 createdAt: { type: string, format: date-time }
                 expiresAt: { type: string, format: date-time }
-                languages: { type: array, items: { type: string } }
-    Step:
+    AgentResponse:
+      description: |
+        The DischargeAI agent's response, stored and returned exactly as it came back, nothing added or
+        removed. On the live runtime (entrypoint agentcore_app.py on the AI-Infra branch) it is
+        { status, flags, summary, plan }: status is approved, needs_clinician_check or needs_human_review,
+        flags lists what the agent's own review found, summary is the Going-Home Plan in Markdown, and
+        plan holds the same plan as sections. If the agent ever answers with text that is not JSON, that
+        text is stored as a string.
       type: object
-      required: [id, text]
-      additionalProperties: false
+      additionalProperties: true
       properties:
-        id: { type: string, description: Stable short id, e.g. step-1 }
-        text: { type: string, description: One thing the patient does, at a 5th-grade reading level }
-    Medication:
-      type: object
-      required: [name, dose, howOften, status, why]
-      additionalProperties: false
-      properties:
-        name: { type: string, description: Verbatim from the source, never translated }
-        dose: { type: string, description: Verbatim from the source; empty when the source gives none }
-        howOften: { type: string, description: In plain words; every number copied from the source }
-        status: { type: string, enum: [new, continue, stop] }
-        why: { type: string }
-    FollowUp:
-      type: object
-      required: [who, when, why]
-      additionalProperties: false
-      properties:
-        who: { type: string }
-        when: { type: string }
-        why: { type: string }
-    Warning:
-      type: object
-      required: [text]
-      additionalProperties: false
-      properties:
-        text: { type: string }
-        tier: { type: string, enum: [call911, er, clinic], description: call911 = life-threatening, er = same-day care, clinic = call the care team }
-    AiOutput:
-      description: The fixed JSON the AI pipeline returns per language (src/contracts/aiOutput.ts). Exactly these five keys.
-      type: object
-      required: [language, steps, medications, followUps, warnings]
-      additionalProperties: false
-      properties:
-        language: { type: string, description: BCP-47 code of the text }
-        steps: { type: array, items: { $ref: "#/components/schemas/Step" } }
-        medications: { type: array, items: { $ref: "#/components/schemas/Medication" } }
-        followUps: { type: array, items: { $ref: "#/components/schemas/FollowUp" } }
-        warnings: { type: array, items: { $ref: "#/components/schemas/Warning" } }
+        status: { type: string }
+        flags: { type: array, items: { type: string } }
+        summary: { type: string }
+        plan: { type: object, additionalProperties: true }
     LlmSummaryView:
       type: object
-      required: ["sum-id", "llm-summary", expiresAt, daysLeft, availableLanguages]
+      required: ["sum-id", "llm-summary", expiresAt, daysLeft]
       properties:
         "sum-id": { type: string }
         sumId: { type: string, description: The same value as sum-id }
         patientID: { type: string }
-        language: { type: string, enum: [en] }
-        status: { type: string }
-        "llm-summary": { $ref: "#/components/schemas/AiOutput" }
-        availableLanguages: { type: array, items: { type: string }, description: English first, then the translations held on the item }
+        status: { type: string, enum: [ready], description: "The item's status (the agent's own verdict is inside llm-summary)" }
+        "llm-summary": { $ref: "#/components/schemas/AgentResponse" }
         createdAt: { type: string, format: date-time }
-        expiresAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: createdAt + 30 days exactly; the data is gone after this moment }
         daysLeft: { type: integer }
-    TranslationView:
-      type: object
-      required: ["sum-id", lang, fromCache, translation, availableLanguages, expiresAt, daysLeft]
-      properties:
-        "sum-id": { type: string }
-        sumId: { type: string, description: The same value as sum-id }
-        lang: { type: string, description: The resolved BCP-47 code }
-        fromCache: { type: boolean, description: true when the item already held it; false when the agent ran on this request }
-        translation: { $ref: "#/components/schemas/AiOutput" }
-        availableLanguages: { type: array, items: { type: string } }
-        expiresAt: { type: string, format: date-time }
-        daysLeft: { type: integer }
-    PatientView:
-      description: What GET /summary, GET /p/{token} and GET /translate return. The fixed JSON plus the expiry facts.
-      allOf:
-        - $ref: "#/components/schemas/AiOutput"
-        - type: object
-          required: [expiresAt, daysLeft, availableLanguages, fromCache]
-          properties:
-            expiresAt: { type: string, format: date-time, description: createdAt + 30 days exactly; the data is gone after this moment }
-            daysLeft: { type: integer }
-            availableLanguages: { type: array, items: { type: string }, description: Languages the document store currently holds for this link, English first }
-            fromCache: { type: boolean, description: true when served from the document store, false when the translation agent just ran }
     Accepted:
       type: object
       required: [statusCode, message, sumId, link, jobId, expiresAt]
       properties:
         statusCode: { type: integer, enum: [202] }
         message: { type: string, enum: ["ingestion started"] }
-        sumId: { type: string, description: "The random path (22 characters, 128 random bits): the activeLinks.sumId, the DynamoDB uid and sum-id, the sum-id / sum_id query value" }
+        sumId: { type: string, description: "The random path (43 characters, 256 random bits): the activeLinks.sumId, the DynamoDB uid and sum-id, the sum-id / sum_id query value and the AgentCore session id" }
         link: { type: string, description: "${PATIENT_APP_URL}/s/${sumId}" }
         jobId: { type: string }
         expiresAt: { type: string, format: date-time }
@@ -188,67 +125,36 @@ components:
         stage: { type: string }
         linkId: { type: string, description: The same value as sumId (earlier name) }
         status: { type: string, enum: ["ingestion started"], description: The same value as message (earlier name) }
-    SafetyResult:
-      description: Deterministic check that every medication, dose and frequency in the source appears in the output and nothing was invented. Counts and names only; never patient data.
-      type: object
-      properties:
-        passed: { type: boolean }
-        checkedAt: { type: string, format: date-time }
-        method: { type: string, enum: [deterministic] }
-        sourceMedicationCount: { type: integer }
-        outputMedicationCount: { type: integer }
-        verified: { type: array, items: { type: object, additionalProperties: true } }
-        dropped: { type: array, items: { type: object, additionalProperties: true } }
-        unsupported: { type: array, items: { type: object, additionalProperties: true } }
-        readabilityGrade: { type: number }
-        reason: { type: string, description: Present when passed is false, e.g. "safety_check_failed dropped=1 unsupported=0" }
-        translations:
-          description: Present only when POST /synthesize was asked to translate; ingestion translates nothing.
-          type: array
-          items:
-            type: object
-            properties:
-              language: { type: string }
-              passed: { type: boolean }
-              issues: { type: array, items: { type: string } }
     Job:
       type: object
       properties:
         jobId: { type: string }
-        stage: { type: string, enum: [received, transcribing, simplifying, stored, emailing, done, needs_review, failed] }
+        stage: { type: string, enum: [received, transcribing, simplifying, stored, emailing, done, failed], description: simplifying is the agent run }
         inputKind: { type: string, enum: [text, pdf, audio] }
         error: { type: string, nullable: true }
-        safety: { nullable: true, allOf: [{ $ref: "#/components/schemas/SafetyResult" }] }
-        verified: { type: boolean, nullable: true }
-        languages: { type: array, items: { type: string }, description: "Languages the summary currently holds, English first; GET /translation adds to it" }
-        meta: { type: object, additionalProperties: true, description: "provider, model, usage, llmMs, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider" }
+        meta: { type: object, additionalProperties: true, description: "provider (agentcore), agentRuntimeArn, agentMs, sourceChars, pdfPages, pdfEngine, pdfStore, speechProvider" }
         sumId: { type: string }
         linkRef: { type: string, description: First 8 hex characters of the sumId's sha256, for logs }
-        linkStatus: { type: string, nullable: true, enum: [pending, ready, needs_review, failed, expired, purged] }
+        linkStatus: { type: string, nullable: true, enum: [pending, ready, failed, expired, purged] }
         expiresAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     SynthesizeRequest:
       type: object
-      description: Exactly one of linkId or text.
+      description: Exactly one of sumId (or linkId) or text.
       properties:
-        linkId: { type: string, description: Re-run the pipeline over the raw text stored for this link and store the result }
-        text: { type: string, description: Run the pipeline over this text and return the JSON without storing it }
-        language: { type: string, description: "Optional: also translate into this language (BCP-47 or name); English is always produced. Ingestion never does this." }
-        languages: { type: array, items: { type: string }, description: Optional extra languages to translate into }
+        sumId: { type: string, description: Send the raw text stored for this summary to the agent again (session id = this sum-id) and store the new response }
+        linkId: { type: string, description: The same as sumId (earlier name) }
+        text: { type: string, description: Send this text to the agent in a fresh session and return the response without storing it }
     SynthesizeResponse:
       type: object
       properties:
         stored: { type: boolean }
-        status: { type: string, enum: [ready, needs_review] }
-        verified: { type: boolean }
-        emailed: { type: boolean, description: linkId mode only; whether the patient has been sent the link }
-        languages: { type: array, items: { type: string } }
-        perLanguage:
-          type: object
-          additionalProperties: { $ref: "#/components/schemas/AiOutput" }
-        safety: { $ref: "#/components/schemas/SafetyResult" }
-        meta: { type: object, additionalProperties: true }
+        sumId: { type: string }
+        status: { type: string, enum: [ready] }
+        emailed: { type: boolean, description: sumId mode only; whether the patient has been sent the link }
+        "llm-summary": { $ref: "#/components/schemas/AgentResponse" }
+        latencyMs: { type: integer }
         linkRef: { type: string }
         expiresAt: { type: string, format: date-time }
     Health:
@@ -276,8 +182,9 @@ components:
         providers:
           type: object
           properties:
-            llm: { type: string, enum: [bedrock, anthropic] }
-            llmModel: { type: string }
+            llm: { type: string, enum: [agentcore] }
+            agentRuntimeArn: { type: string }
+            agentQualifier: { type: string, description: The AgentCore endpoint, DEFAULT unless AGENT_QUALIFIER is set }
             speech: { type: string, enum: [transcribe] }
             sqlConnection: { type: string, description: The RDS connection, without the password }
             docStore: { type: string, enum: [dynamo] }
@@ -327,7 +234,7 @@ paths:
     post:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: "Task 3 of the backend tasks doc: ingest a discharge summary for a patient; 202 before any AI call runs"
+      summary: "Task 3 of the backend tasks doc: ingest a discharge summary for a patient; 202 before the agent runs"
       description: |
         JSON body { data, type, patientID } (the tasks doc). type "text": data is the discharge summary text.
         type "pdf": data is the PDF as base64 (a data:application/pdf;base64, prefix is accepted); the PDF is
@@ -336,11 +243,10 @@ paths:
         The random path (sumId) is stored in the SQL activeLinks table and is the DynamoDB uid of the summary
         item. Before the response, a PDF is converted with pdfToText (a PDF with no readable text answers 400
         unreadable_pdf and nothing is saved) and the text, pasted or extracted, is saved on the item as raw-text.
-        The response comes at once; then, asynchronously: the text goes to the LLM (plain language at a
-        5th-grade level) and the call is awaited, deterministic safety checks run, llm-summary + sum-id are saved
-        on the same item with expiresAt = now + 30 days, and the link is emailed to the patient's email and to
-        caregiverEmail. No translation happens during ingestion; GET /translation does that on demand. A summary that fails the safety checks is held as needs_review
-        (423 for the patient, no email) until POST /synthesize re-runs it.
+        The response comes at once; then, asynchronously: the text goes to the DischargeAI agent on AgentCore
+        (session id = the sumId) and the call is awaited (it can take minutes), the agent's whole response is
+        saved as llm-summary with sum-id on the same item (expiresAt = now + 30 days), and the link is emailed
+        to the patient's email and to caregiverEmail whatever status the agent gave. Nothing is translated.
         The earlier multipart form (patientId + one of text, file, audio) is kept as an alias; audio comes from
         the architecture diagram and goes to S3 emraudio-rh.
       requestBody:
@@ -356,7 +262,7 @@ paths:
                 patientID: { oneOf: [{ type: string }, { type: integer }], description: "The patient's ID from GET /patients (text or number)" }
             examples:
               text:
-                value: { type: text, patientID: pt-0001, data: "New medications:\n- Furosemide 40 mg by mouth once daily for swelling" }
+                value: { type: text, patientID: "1", data: "New medications:\n- Furosemide 40 mg by mouth once daily for swelling" }
           multipart/form-data:
             schema:
               type: object
@@ -376,7 +282,7 @@ paths:
     get:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: Follow the 202 (stage, safety-check result, run metadata; no patient text)
+      summary: Follow the 202 (stage and run metadata; no patient text)
       parameters:
         - { name: jobId, in: path, required: true, schema: { type: string } }
       responses:
@@ -386,38 +292,37 @@ paths:
     post:
       tags: [provider]
       security: [{ providerKey: [] }]
-      summary: Run the AI pipeline (simplify, safety checks) and get the fixed JSON; translates only into languages named in the request
+      summary: Run the DischargeAI agent again, or on any text
       description: |
-        `{ text, language?, languages? }` returns the JSON per language without storing anything.
-        `{ linkId, language?, languages? }` re-runs the pipeline over the raw text stored for the link
-        (after a prompt change, or to release a needs_review summary), replaces the stored LLM response
-        and clears translations made from the old English, and emails the patient once it verifies.
-        Safety-check results come back under `safety`, never inside the per-language JSON.
+        `{ text }` sends the text to the agent in a fresh session and returns its response without storing anything.
+        `{ sumId }` (or `linkId`) sends the raw text stored for the summary to the agent again, with the sum-id as the
+        session id, replaces llm-summary with the new response, and emails the patient if the link had not been sent.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/SynthesizeRequest" }
       responses:
-        "200": { description: Result, content: { application/json: { schema: { $ref: "#/components/schemas/SynthesizeResponse" } } } }
-        "400": { description: "empty_input, invalid_link, invalid_language" }
+        "200": { description: The agent's response, content: { application/json: { schema: { $ref: "#/components/schemas/SynthesizeResponse" } } } }
+        "400": { description: "empty_input or invalid_link" }
         "404": { description: link_not_found }
         "409": { description: "job_in_progress (the ingest job has not finished) or no_source_text" }
         "410": { description: link_expired or link_purged }
+        "500": { description: The agent failed or timed out }
   /llm-sumary:
     get:
       tags: [patient]
-      summary: "Task 4 of the backend tasks doc (spelled so): the llm-summary from the DynamoDB item for a summary id (no SQL row needed; the item's own status and expiresAt decide the answer when there is none)"
+      summary: "Task 4 of the backend tasks doc (spelled so): the agent's response saved on the DynamoDB item for a summary id"
       parameters:
         - $ref: "#/components/parameters/sumIdHyphen"
         - $ref: "#/components/parameters/sumIdUnderscore"
       responses:
-        "200": { description: The item's llm-summary, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
+        "200": { description: The item's llm-summary, as the agent returned it, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
         "400": { description: "missing_sum_id or invalid_link", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { description: link_not_found }
         "410": { description: link_expired (checked at read time, before any purge) or link_purged }
-        "423": { description: needs_review }
-        "425": { description: "processing; body carries { stage, jobId }" }
+        "425": { description: "processing (the agent is still working); body carries { stage, jobId }" }
+        "500": { description: processing_failed (the agent run failed) }
   /llm-summary:
     get:
       tags: [patient]
@@ -430,83 +335,43 @@ paths:
         "400": { description: "missing_sum_id or invalid_link" }
         "404": { description: link_not_found }
         "410": { description: link_expired or link_purged }
-        "423": { description: needs_review }
         "425": { description: processing }
+        "500": { description: processing_failed }
   /translation:
     get:
       tags: [patient]
-      summary: "Task 5 of the backend tasks doc: the summary in another language, cache-first on the DynamoDB item"
-      description: |
-        1. Checks the item's translations map for the language (or its base language, es-MX -> es) and returns it (fromCache true).
-        2. Otherwise reads the llm-summary (the same path as GET /llm-sumary), sends it to the translation agent with the
-           language, waits, checks that every medication name, dose and number came through unchanged, saves the result
-           under translations[lang] on the same item, and returns it (fromCache false). A translation that fails the
-           check answers 422 and is not saved. lang=en returns the llm-summary.
-      parameters:
-        - name: lang
-          in: query
-          required: true
-          schema: { type: string }
-          description: BCP-47 code or language name, e.g. es, Spanish, zh, Mandarin, ar
-        - $ref: "#/components/parameters/sumIdUnderscore"
+      summary: "Task 5 of the backend tasks doc: not built yet"
       responses:
-        "200": { description: The translation, content: { application/json: { schema: { $ref: "#/components/schemas/TranslationView" } } } }
-        "400": { description: "missing_language, invalid_language, missing_sum_id or invalid_link", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "404": { description: link_not_found }
-        "410": { description: link_expired (checked at read time, before any purge) or link_purged }
-        "422": { description: translation_rejected (a name, dose or number changed; nothing saved) }
-        "423": { description: needs_review }
-        "425": { description: processing }
-        "502": { description: translation_failed (the translation agent is unavailable; the English summary is still available) }
+        "501": { description: not_implemented, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /summary:
     get:
       tags: [patient]
-      summary: "Earlier spelling of task 4 (?link=), with an optional language; returns the per-language JSON at the top level"
+      summary: "Earlier spelling of task 4 (?link=); the same body as /llm-sumary"
       parameters:
         - $ref: "#/components/parameters/link"
-        - $ref: "#/components/parameters/language"
       responses:
-        "200": { description: The fixed JSON plus expiry facts, content: { application/json: { schema: { $ref: "#/components/schemas/PatientView" } } } }
-        "400": { description: invalid_link or invalid_language }
+        "200": { description: The item's llm-summary, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
+        "400": { description: invalid_link }
         "404": { description: link_not_found }
-        "410": { description: link_expired (30 days passed) or link_purged (data deleted) }
-        "422": { description: translation_rejected (the translation changed a name, dose or number; the English summary is still available) }
-        "423": { description: needs_review (the safety checks failed; the care team must re-run or correct it) }
-        "425": { description: "processing; body carries { stage, jobId }" }
-        "502": { description: translation_failed (the translation agent is unavailable; the English summary is still available) }
+        "410": { description: link_expired or link_purged }
+        "425": { description: processing }
+        "500": { description: processing_failed }
   /translate:
     get:
       tags: [patient]
-      summary: "Earlier spelling of task 5 (?link=&language=), same cache-first handler; returns the per-language JSON at the top level"
-      parameters:
-        - $ref: "#/components/parameters/link"
-        - name: language
-          in: query
-          required: true
-          schema: { type: string }
-          description: BCP-47 code or English language name, e.g. Spanish, es, zh, ar
+      summary: "Earlier spelling of task 5: not built yet"
       responses:
-        "200": { description: Translation, content: { application/json: { schema: { $ref: "#/components/schemas/PatientView" } } } }
-        "400": { description: missing_language, invalid_language or invalid_link }
-        "404": { description: link_not_found }
-        "410": { description: link_expired or link_purged }
-        "422": { description: translation_rejected }
-        "423": { description: needs_review }
-        "425": { description: processing }
-        "502": { description: translation_failed }
+        "501": { description: not_implemented, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /p/{token}:
     get:
       tags: [patient]
-      summary: The patient's link with the token in the path (same handler as GET /summary; ?language= follows the cache-first rule)
+      summary: The patient's link with the token in the path; the same body as /llm-sumary
       parameters:
-        - { name: token, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }, description: The 22-character link id }
-        - $ref: "#/components/parameters/language"
+        - { name: token, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{43}$" }, description: The 43-character link id }
       responses:
-        "200": { description: The fixed JSON plus expiry facts, content: { application/json: { schema: { $ref: "#/components/schemas/PatientView" } } } }
-        "400": { description: invalid_link or invalid_language }
+        "200": { description: The item's llm-summary, content: { application/json: { schema: { $ref: "#/components/schemas/LlmSummaryView" } } } }
+        "400": { description: invalid_link }
         "404": { description: link_not_found }
         "410": { description: link_expired or link_purged }
-        "422": { description: translation_rejected }
-        "423": { description: needs_review }
         "425": { description: processing }
-        "502": { description: translation_failed }
+        "500": { description: processing_failed }

@@ -15,7 +15,7 @@ export interface PurgeReport {
 
 /**
  * The 30-day self-destruct, in code. For every link past its expiry:
- *   1. delete the summary item (raw text, LLM summary, translations) from the document store,
+ *   1. delete the summary item (raw text, the agent's response) from the document store,
  *   2. delete the PDF and the audio object from their buckets, one deletion receipt each,
  *   3. mark the link purged,
  *   4. write audit events.
