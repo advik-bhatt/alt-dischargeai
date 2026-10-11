@@ -1,6 +1,6 @@
 # DischargeAI backend: task list (Kiro tasks)
 
-Branch `backend`. Every item below is done and committed on 2026-10-10; the suite is green at every commit. A teammate opening this in Kiro continues from "Open" at the bottom.
+Branch `backend`. Every item below is done and committed on 2026-10-10 and 2026-10-11; the suite is green at every commit. A teammate opening this in Kiro continues from "Open" at the bottom.
 
 ## Precedence (the rule every task follows)
 
@@ -33,6 +33,8 @@ The team's backend tasks doc first, Advik's Granola note second, the team diagra
 - [x] B6 The purge refuses a `DEMO_NOW`-shifted run against DynamoDB or S3 (`DEMO_PURGE_ON_AWS=yes` to override on a throwaway account).
 - [x] B7 Ingest as the tasks doc describes it: `pdfToText` runs before the 202 and the text (pasted or extracted) is saved on the DynamoDB item as `raw-text`; the background job is the LLM call, saving `llm-summary` + `sum-id`, and the emails. Translation is out of ingestion entirely (no `language` on `POST /ingest`, no `language` column on `activeLinks`, no `translations` or `language` attribute written at ingest); it exists only as `GET /translation` on demand, and `POST /synthesize` when a request names a language.
 - [x] B8 The read routes work from the DynamoDB item alone: `GET /llm-sumary`, `GET /translation` and the aliases no longer require an `activeLinks` row (found when a hand-written entry in the real table answered 404). `npm run sample-entry` writes, resets or deletes one fake sample entry (`sampledischargesummary`) for trying them.
+- [x] B9 Swagger docs from the current `openapi.yaml`: `npm run docs` builds the standalone `docs/swagger.html` (`scripts/swagger-docs.ts`), and `test/swagger-docs.test.ts` fails when the committed page differs from what the spec builds. The live `/docs` and `/openapi.json` read the same file.
+- [x] B10 `GET /patients` takes no parameters: the `q` search filter, which the tasks doc does not ask for, is removed from the route, repository, OpenAPI, README and Swagger page, and a query string is ignored.
 
 ## Open (for the team)
 

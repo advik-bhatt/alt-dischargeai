@@ -18,6 +18,8 @@ Patients come from the team's own table, `patientinfo` in the `dischargeai` data
 
 With AWS credentials in the shell (or an instance role on the team's EC2 box) the backend reads the team secret at boot and switches to MariaDB on RDS, DynamoDB and S3 by itself. See "Team infrastructure". Outside the VPC, RDS port 3306 is unreachable and the server exits with `connect ETIMEDOUT`; add `DATABASE_URL=sqlite:data/live.db` to keep Bedrock, DynamoDB and S3 live while SQL stays local.
 
+Which document store is the server on? A server started in a shell without AWS credentials (or with an expired session token) logs `config: Secrets Manager not available, running with local defaults` and quietly uses the SQL twin of the DynamoDB table, so an item that exists only in DynamoDB, such as the sample entry, answers `404 link_not_found`. Check with `curl -s localhost:4000/health | grep -o '"docStoreTarget":"[^"]*"'`; it must say `dynamodb:us-west-2/discharge-summaries`. Export the credentials in the terminal that starts the server (the terminal that runs curl needs none), and restart after every `git pull`: `npm run dev` restarts on file changes, `npm run start` does not.
+
 ```sh
 npm test            # offline, no keys
 npm run typecheck
@@ -98,7 +100,7 @@ The server terminal prints two emails with the link: `To: harold.jennings@exampl
 
 ### Task 4: `GET /llm-sumary?sum-id=`
 
-These routes read the DynamoDB item, as the tasks doc says, and need no SQL row: an item written straight into the table (by a teammate's agent, or by hand) reads the same as one made by an ingest, judged by its own `status` and `expiresAt`. To try one without ingesting, `npm run sample-entry` (AWS credentials in the shell) writes a fake sample entry with the id `sampledischargesummary`: a hand-written English summary built from the repo's synthetic Example 1, one stored Spanish translation, and 30 days to live. `-- --reset` puts it back to that state after you have translated more languages into it, `-- --delete` removes it, and it never touches an item with that id that is not marked as the sample. Use `sampledischargesummary` below, or the `sumId` from a task 3 response (patient routes need no key):
+These routes read the DynamoDB item, as the tasks doc says, and need no SQL row: an item written straight into the table (by a teammate's agent, or by hand) reads the same as one made by an ingest, judged by its own `status` and `expiresAt`. To try one without ingesting, `npm run sample-entry` (AWS credentials in the shell) writes a fake sample entry with the id `sampledischargesummary`: a hand-written English summary built from the repo's synthetic Example 1, one stored Spanish translation, and 30 days to live. `-- --reset` puts it back to that state after you have translated more languages into it, `-- --delete` removes it, and it never touches an item with that id that is not marked as the sample. Use `sampledischargesummary` below, or the `sumId` from a task 3 response (patient routes need no key). A `404` for `sampledischargesummary` means the server is not reading DynamoDB; see "Which document store is the server on?" above.
 
 ```sh
 # The llm-summary saved on the DynamoDB item, with "sum-id", expiresAt, daysLeft and availableLanguages
@@ -160,14 +162,14 @@ With the default offline provider the cache behaves exactly as above, but the wo
 11. `GET /llm-sumary`, `GET /translation` and `GET /p/:token` answer `410 link_purged`.
 12. `npm run show-audit -- --receipts` and `npm run show-audit -- --link <sumId>` print the receipts and the summary's audit trail; no PHI appears in either.
 
-Run on 2026-10-10 in the build container with the offline providers on SQLite: exit 0, every step as above.
+Run on 2026-10-11 on Node 24.21 in the build container with the offline providers on a fresh SQLite file: exit 0, every step as above (the sweep step needs local stores, as step 10 says).
 
 ## Public surface
 
 | Method | Path | Who | What |
 | --- | --- | --- | --- |
 | GET | `/health` | anyone | clock, configuration source, providers, PDF and audio stores with any fallback reason |
-| GET | `/patients` | provider | task 1 |
+| GET | `/patients` | provider | task 1; takes no parameters and returns the whole table, sorted by last then first name |
 | GET | `/patients/:id` | provider | one patient, with the active link once generated |
 | POST | `/ingest` | provider | task 3; takes no language and translates nothing. Multipart `patientId` + one of `text`, `file` (PDF), `audio` is kept as an alias (audio comes from the diagram; it is transcribed in the background first, the only input whose text does not exist before the answer) |
 | GET | `/jobs/:jobId` | provider | follow the 202: stage, safety result, run metadata |
@@ -196,7 +198,7 @@ Safety-check results are stored separately and returned by `POST /synthesize` an
 | PDF to text | `src/extract/pdfToText.ts` (`pdfToText`, pdf-parse with a pdfjs fallback), `src/extract/text.ts` |
 | PDF and audio objects | `src/data/objects.ts` (S3 `emrpdf-rh` / `emraudio-rh` or local folders), `src/data/s3/objects.ts`, `scripts/setup-s3.ts` |
 | The random path (`sumId`) | `src/crypto/sumId.ts` (128 random bits, base64url, 22 characters) |
-| SQL: the team's `patientinfo` (read only), `activeLinks`, `jobs`, `audit_log` | `src/db/migrations/0001_init.sql`, `0002_patientinfo.{sqlite,mysql}.sql`, `src/db/repos/{patients,activeLinks,jobs,audit}.ts` (column discovery in `patients.ts`), MariaDB via `src/db/index.ts` (`MySqlDb`), SQLite locally |
+| SQL: the team's `patientinfo` (read only), `activeLinks`, `jobs`, `audit_log` | `src/db/migrations/0001_init.sql`, `0002_patientinfo.{sqlite,mysql}.sql`, `0003_drop_ingest_language.sql` (drops the ingest-time `language` column from `activeLinks`; it runs on the first start of this version, including on the shared RDS), `src/db/repos/{patients,activeLinks,jobs,audit}.ts` (column discovery in `patients.ts`), MariaDB via `src/db/index.ts` (`MySqlDb`), SQLite locally |
 | DynamoDB `discharge-summaries`, one item per summary | `src/docstore/dynamo.ts`, SQL twin `src/docstore/local.ts`, item type `src/docstore/types.ts`, `scripts/setup-dynamo.ts` |
 | Speech to text (Transcribe Medical) | `src/pipeline/speechToText.ts`, `src/pipeline/transcribe/medical.ts`, offline fixture `fixtures/offline/transcripts/dictation-1.json` |
 | Plain language, Bedrock Claude at grade 5 | `src/pipeline/simplify.ts`, `src/pipeline/bedrock/{converse,simplify}.ts`, `src/pipeline/prompts.ts`, offline `src/pipeline/offline/{fixtures,rules}.ts` |
@@ -207,6 +209,9 @@ Safety-check results are stored separately and returned by `POST /synthesize` an
 | Day 30: read-time expiry, purge, DynamoDB TTL, S3 lifecycle | `src/routes/linkAccess.ts` (410 at read time), `src/pipeline/purge.ts`, `scripts/sweep.ts` |
 | Deletion receipts | `src/audit/receipts.ts` (sql, file, console, dynamo sinks), `src/audit/streamHandler.ts` (DynamoDB Streams, TTL REMOVE events), `src/audit/s3EventHandler.ts` (lifecycle expirations), `scripts/show-audit.ts` |
 | Configuration from the team secret | `src/secrets.ts`, `src/bootstrap.ts` |
+| OpenAPI and Swagger docs | `openapi.yaml` (the one source), `src/app.ts` (serves `/docs` and `/openapi.json`), `scripts/swagger-docs.ts` (`npm run docs` builds the standalone `docs/swagger.html`), `test/openapi.test.ts` (documented paths equal mounted routes), `test/swagger-docs.test.ts` (the page equals what `openapi.yaml` builds) |
+| Sample entry in the real table | `scripts/sample-entry.ts` (`npm run sample-entry`, `-- --reset`, `-- --delete`), `test/sample-entry.test.ts` |
+| Design and task notes | `docs/design.md` (architecture and decisions), `docs/tasks.md` (what is done, what is open for the team) |
 
 ## Team infrastructure
 
@@ -229,7 +234,7 @@ IAM the backend needs: `secretsmanager:GetSecretValue` on the secret; `dynamodb:
 
 ### Verified on 2026-10-10 and 2026-10-11 UTC (build container, Workshop Studio role)
 
-Every curl in "Test the five tasks" was run as written against `npm run dev` on a fresh SQLite file; the offline demo exits 0. Live runs used the team secret, `LLM_PROVIDER=bedrock` and `DATABASE_URL=sqlite:data/live.db` (RDS port 3306 is not reachable from there).
+On 2026-10-11 (Node 24.21) every curl block in "Test the five tasks" was run as written against a fresh seeded SQLite server and returned the statuses shown there, except the `DEMO_NOW` restart block in task 4, which restarts the server and was not run; the offline demo exits 0. Live runs used the team secret, `LLM_PROVIDER=bedrock` and `DATABASE_URL=sqlite:data/live.db` (RDS port 3306 is not reachable from there).
 
 | Check | Result |
 | --- | --- |
@@ -241,8 +246,9 @@ Every curl in "Test the five tasks" was run as written against `npm run dev` on 
 | `POST /ingest` live, PDF for the first patient, after the change that moved PDF reading ahead of the 202 and took translation out | 202 after 2.1 s (it now reads the PDF, saves it to S3 and writes the item first); job `done` and verified on Sonnet 4.6, 2.9 s of model time. The `discharge-summaries` item held `uid`, `sum-id`, `patientID`, `raw-text`, `llm-summary`, `status: ready`, `createdAt`, `expiresAt`, plus `inputKind`, `pdfKey`, `safety`, `meta`, and no `translations` or `language`. The PDF was in `emrpdf-rh` as `<sumId>.pdf`, 885 bytes, AES256. My read of the item came after the model had finished, so the order "text saved before the model starts" is shown by the test that holds the model, not by this live read |
 | `GET /translation` live | the first Mandarin request translated in 3.5 s and created the `translations` map on the real item (the missing-map path), the second came from the item in 74 ms, and a third language (`es`) was added; the map then held `es` and `zh`, name and dose verbatim |
 | The read routes on a hand-written entry with no SQL row (`sampledischargesummary`, written into the real table with `npm run sample-entry`) | before the fix the server answered 404 for it, because the read path required a SQL link row first; after it, `GET /llm-sumary` 200 with the stored summary and 30 days left, `GET /translation?lang=es` from the entry, `zh` as a miss that was saved on the item and then a hit, `/llm-summary`, `/summary` and `/p/:token` 200, an unknown id 404. The Mandarin that test added was removed with `--reset`, so the entry is in its original state |
+| Swagger page | `docs/swagger.html` rendered in headless Chromium with Swagger UI 5.33.1 served from a local copy (the page itself loads it from jsDelivr): the title, all 12 operations and no page errors. Not opened with the real CDN from the build container |
 | Cleanup | each live run's item and PDF were deleted by key and confirmed gone |
-| MariaDB 10.11 (local) | migrations, the pre-contract upgrade, `patientinfo` with an INT id and a DATE column, ingest and `activeLinks` rows: `MYSQL_TEST_URL='mysql://user:pw@127.0.0.1:3306/x?insecure=1' npm test` |
+| MariaDB 10.11 (local) | migrations, the pre-contract upgrade, `patientinfo` with an INT id and a DATE column, ingest and `activeLinks` rows: `MYSQL_TEST_URL='mysql://user:pw@127.0.0.1:3306/x?insecure=1' npm test`; last run 2026-10-11 on Node 24.21 against MariaDB 10.11.14: 134 of 134 |
 
 ### Needs a key or not exercised live from the build container
 
@@ -313,8 +319,8 @@ The other branch of this repo (`alt-backend`) keeps surfaces this branch leaves 
 
 ## Tests
 
-`npm test` on Node 24: 130 passing and 1 skipped (131 of 131 with `MYSQL_TEST_URL` set, which turns on the MariaDB upgrade test), 19 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), no keys. The files cover, in order: the nine `GET /patients` keys read from a `patientinfo` the server never seeds; JSON ingest of text and PDF, the 400 on a bad `type`, the `activeLinks` row, the DynamoDB item and the two emails; `GET /llm-sumary` (200, aliases, 400, 404, 425, 410); `GET /translation` (miss, hit, refused translation); `pdfToText`; upgrades from older databases; the RDS bundle; the DEMO_NOW purge guard; and the earlier routes, safety checks, stores, handlers and OpenAPI-versus-routes check.
+`npm test` on Node 24.21 (run 2026-10-11): 133 passing and 1 skipped (134 of 134 with `MYSQL_TEST_URL` set, which turns on the MariaDB upgrade test), 21 files, offline (`LLM_PROVIDER=offline`, SQLite in memory), no keys. The files cover, in order: the nine `GET /patients` keys read from a `patientinfo` the server never seeds; JSON ingest of text and PDF, the 400 on a bad `type`, the `activeLinks` row, the DynamoDB item and the two emails; `GET /llm-sumary` (200, aliases, 400, 404, 425, 410), including an item that exists only in the document store with no SQL row; `GET /translation` (miss, hit, refused translation); `pdfToText`; the sample entry and its guard against touching anything not marked as the sample; that `GET /patients` ignores any query string; that `docs/swagger.html` equals what `openapi.yaml` builds; upgrades from older databases; the RDS bundle; the DEMO_NOW purge guard; and the earlier routes, safety checks, stores, handlers and OpenAPI-versus-routes check.
 
 ## Limitations
 
-The MariaDB path is written against the mysql2 API and tested on SQLite, not against RDS from here (see the table above). Per-patient listing in DynamoDB is a filtered scan. The simplifier and translator prompts are starting points for the teammate who owns them; the contract and the safety check are what the rest of the system relies on. Audio transcription runs on the offline fixture unless Transcribe Medical is enabled.
+The MariaDB path is written against the mysql2 API and tested on SQLite and a local MariaDB 10.11, not against RDS from here (see the table above). If sending an email fails after the summary was saved, the whole job and link are marked failed even though `llm-summary` is on the item, and the job queue is in memory with one job at a time. Per-patient listing in DynamoDB is a filtered scan. The simplifier and translator prompts are starting points for the teammate who owns them; the contract and the safety check are what the rest of the system relies on. Audio transcription runs on the offline fixture unless Transcribe Medical is enabled.
