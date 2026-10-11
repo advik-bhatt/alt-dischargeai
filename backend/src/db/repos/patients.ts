@@ -120,10 +120,6 @@ export class PatientsRepo {
     if (!/^[A-Za-z0-9_]+$/.test(table)) throw new Error(`PATIENTS_TABLE must be a plain table name (letters, digits, underscores), got "${table}"`);
   }
 
-  get dialect() {
-    return this.db.dialect;
-  }
-
   /** Reads the table's columns and maps them. Throws with the real column list when there is no id column. */
   async init(): Promise<{ table: string; columns: string[]; mapped: ColumnMap; unmapped: string[] }> {
     this.columns = await this.readColumns();
@@ -140,10 +136,6 @@ export class PatientsRepo {
   }
 
   private async readColumns(): Promise<string[]> {
-    if (this.db.dialect === "sqlite") {
-      const rows = await this.db.all<{ name: string }>(`PRAGMA table_info(${quote(this.table)})`);
-      return rows.map((r) => r.name);
-    }
     const rows = await this.db.all<{ name: string }>(
       "SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
       [this.table],

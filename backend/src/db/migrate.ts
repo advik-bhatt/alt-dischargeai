@@ -1,20 +1,15 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { splitStatements, type Db, type Dialect } from "./index.js";
+import { splitStatements, type Db } from "./index.js";
 
 const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
 
 /**
- * The migrations are written once, in portable SQL, and rewritten per dialect here:
- *   MySQL/MariaDB: AUTOINCREMENT -> AUTO_INCREMENT; BLOB -> LONGBLOB; TEXT -> MEDIUMTEXT (JSON blobs);
- *                  CREATE INDEX IF NOT EXISTS -> CREATE INDEX (MariaDB accepts IF NOT EXISTS, MySQL 8
- *                  does not; a duplicate index is ignored instead).
- *   SQLite: as written.
- * A file named `NNNN_name.sqlite.sql` or `NNNN_name.mysql.sql` runs only on that dialect, for the few
- * changes the two engines cannot share (rebuilding a table in SQLite, dropping a foreign key in MySQL).
+ * The migrations are written in portable SQL and rewritten for MariaDB/MySQL here: AUTOINCREMENT ->
+ * AUTO_INCREMENT; BLOB -> LONGBLOB; TEXT -> MEDIUMTEXT (JSON blobs); CREATE INDEX IF NOT EXISTS ->
+ * CREATE INDEX (MariaDB accepts IF NOT EXISTS, MySQL 8 does not; a duplicate index is ignored instead).
  */
-export function toDialect(sql: string, dialect: Dialect): string {
-  if (dialect !== "mysql") return sql;
+export function toMysql(sql: string): string {
   return sql
     .replace(/\bAUTOINCREMENT\b/g, "AUTO_INCREMENT")
     .replace(/\bBLOB\b/g, "LONGBLOB")
@@ -33,29 +28,20 @@ function isMissingKey(err: unknown): boolean {
   return e?.code === "ER_CANT_DROP_FIELD_OR_KEY" || e?.errno === 1091;
 }
 
-/** `0002_x.sqlite.sql` runs on SQLite only, `0002_x.mysql.sql` on MySQL only, `0001_x.sql` on both. */
-export function migrationFilesFor(files: string[], dialect: Dialect): string[] {
-  return files
-    .filter((f) => f.endsWith(".sql"))
-    .filter((f) => {
-      const m = /\.(sqlite|mysql)\.sql$/.exec(f);
-      return !m || m[1] === dialect;
-    })
-    .sort();
+/** The migration files in name order. The recorded names are what `schema_migrations` holds, so never rename an applied one. */
+export function migrationFiles(files: string[]): string[] {
+  return files.filter((f) => f.endsWith(".sql")).sort();
 }
 
 /** Tables the backend's own schema must have (the patients table is the team's and is checked on its own). */
-export const REQUIRED_TABLES = ["activeLinks", "jobs", "audit_log", "summaries"] as const;
+export const REQUIRED_TABLES = ["activeLinks", "jobs", "audit_log"] as const;
 
 /** The tables the first, pre-contract 0001_init.sql created (all this backend's own), children first. */
 export const PRE_CONTRACT_TABLES = ["documents", "jobs", "audit_log", "links", "patients"] as const;
 export const PRE_CONTRACT_SUFFIX = "_pre_contract";
 
 export async function tableExists(db: Db, table: string): Promise<boolean> {
-  const row =
-    db.dialect === "sqlite"
-      ? await db.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", [table])
-      : await db.get("SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [table]);
+  const row = await db.get("SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [table]);
   return !!row;
 }
 
@@ -79,9 +65,6 @@ export async function setAsidePreContractSchema(db: Db): Promise<string[]> {
     }
   }
   for (const t of present) await db.exec(`ALTER TABLE \`${t}\` RENAME TO \`${t}${PRE_CONTRACT_SUFFIX}\``);
-  // SQLite index names are database-wide: the old jobs_stage and audit_event would make the current
-  // 0001's CREATE INDEX IF NOT EXISTS skip its own. (MySQL index names are per table.)
-  if (db.dialect === "sqlite") for (const idx of ["jobs_stage", "audit_event"]) await db.exec(`DROP INDEX IF EXISTS ${idx}`);
   await db.run("DELETE FROM schema_migrations WHERE name = ?", ["0001_init.sql"]);
   return present;
 }
@@ -93,7 +76,6 @@ export async function setAsidePreContractSchema(db: Db): Promise<string[]> {
  * (MySQL DDL is not transactional). Returns "table.constraint" for each one dropped.
  */
 export async function detachPreContractForeignKeys(db: Db): Promise<string[]> {
-  if (db.dialect !== "mysql") return [];
   const names = PRE_CONTRACT_TABLES.map((t) => `${t}${PRE_CONTRACT_SUFFIX}`);
   const rows = await db.all<{ t: string; c: string }>(
     `SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS c FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME IN (${names.map(() => "?").join(", ")})`,
@@ -110,27 +92,22 @@ export async function migrate(db: Db, now: () => string = () => new Date().toISO
   const detached = await detachPreContractForeignKeys(db);
   if (setAside.length || detached.length) onSetAside?.([...setAside.map((t) => `${t} -> ${t}${PRE_CONTRACT_SUFFIX}`), ...detached.map((k) => `foreign key ${k} dropped`)]);
   const applied = new Set((await db.all<{ name: string }>("SELECT name FROM schema_migrations")).map((r) => r.name));
-  const files = migrationFilesFor(readdirSync(MIGRATIONS_DIR), db.dialect);
+  const files = migrationFiles(readdirSync(MIGRATIONS_DIR));
   const ran: string[] = [];
-  try {
-    for (const file of files) {
-      if (applied.has(file)) continue;
-      const sql = toDialect(readFileSync(join(MIGRATIONS_DIR, file), "utf8"), db.dialect);
-      for (const statement of splitStatements(sql)) {
-        try {
-          await db.exec(statement);
-        } catch (err) {
-          if (db.dialect === "mysql" && /^CREATE INDEX/i.test(statement) && isDuplicateIndex(err)) continue;
-          if (db.dialect === "mysql" && /DROP FOREIGN KEY/i.test(statement) && isMissingKey(err)) continue;
-          throw err;
-        }
+  for (const file of files) {
+    if (applied.has(file)) continue;
+    const sql = toMysql(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+    for (const statement of splitStatements(sql)) {
+      try {
+        await db.exec(statement);
+      } catch (err) {
+        if (/^CREATE INDEX/i.test(statement) && isDuplicateIndex(err)) continue;
+        if (/DROP FOREIGN KEY/i.test(statement) && isMissingKey(err)) continue;
+        throw err;
       }
-      await db.run("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", [file, now()]);
-      ran.push(file);
     }
-  } finally {
-    // 0002 on SQLite turns foreign keys off while it rebuilds a table; a failure must not leave them off.
-    if (db.dialect === "sqlite") await db.exec("PRAGMA foreign_keys = ON");
+    await db.run("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", [file, now()]);
+    ran.push(file);
   }
   await assertSchema(db);
   return ran;

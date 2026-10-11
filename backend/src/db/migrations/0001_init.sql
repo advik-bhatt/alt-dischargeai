@@ -1,8 +1,8 @@
--- DischargeAI backend schema (the team contract). Portable SQL that runs unchanged on SQLite (local,
--- tests) and on MariaDB/MySQL (the team's RDS instance `patients`, database `dischargeai`): VARCHAR for
--- keyed columns, TEXT for JSON blobs, INTEGER for counters. src/db/migrate.ts rewrites the few
--- dialect-specific tokens (AUTOINCREMENT, TEXT sizes) for MySQL. Timestamps are ISO-8601 strings
--- produced by the app clock, never by the database, so expiry is computed in one place.
+-- DischargeAI backend schema (the team contract), MariaDB on the team's RDS instance `patients`,
+-- database `dischargeai`. Written in portable SQL (VARCHAR for keyed columns, TEXT for JSON blobs,
+-- INTEGER for counters); src/db/migrate.ts rewrites the few MariaDB-specific tokens (AUTOINCREMENT,
+-- TEXT sizes). Timestamps are ISO-8601 strings produced by the app clock, never by the database, so
+-- expiry is computed in one place. The summaries themselves live in DynamoDB, not here.
 
 -- Patients are NOT created here: they live in the team's own table (`patientinfo`, see
 -- 0002_patientinfo.*.sql and src/db/repos/patients.ts), which this backend only reads.
@@ -59,13 +59,3 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_sum_id ON audit_log (sum_id);
 CREATE INDEX IF NOT EXISTS audit_event ON audit_log (event);
-
--- The SQL twin of DynamoDB `discharge-summaries` for local work (DOC_STORE=local): one row per
--- summary, uid = sumId, the whole item as JSON, expires_at = the TTL attribute in epoch seconds.
-CREATE TABLE IF NOT EXISTS summaries (
-  uid VARCHAR(32) PRIMARY KEY,
-  item TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  created_at VARCHAR(32) NOT NULL
-);
-CREATE INDEX IF NOT EXISTS summaries_expires_at ON summaries (expires_at);

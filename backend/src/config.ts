@@ -26,8 +26,6 @@ const optionalString = z
   .optional()
   .transform((v) => (v === undefined || v.trim() === "" ? undefined : v.trim()));
 
-const storeMode = z.enum(["auto", "local", "s3"]).default("auto");
-
 export const ConfigSchema = z.object({
   NODE_ENV: z.string().default("development"),
   PORT: int(4000),
@@ -50,9 +48,7 @@ export const ConfigSchema = z.object({
   DEMO_PURGE_ON_AWS: z.enum(["no", "yes"]).default("no"),
   MAX_UPLOAD_BYTES: int(15 * 1024 * 1024),
 
-  /** SQLite file for local development and tests; ":memory:" for throwaway runs. */
-  DATABASE_FILE: z.string().default("data/app.db"),
-  /** sqlite:<file> or mysql://user:password@host:3306/database. Wins over MYSQL_* and DATABASE_FILE. */
+  /** mysql://user:password@host:3306/database. Wins over MYSQL_*. */
   DATABASE_URL: optionalString,
   /** MariaDB on RDS. Filled from Secrets Manager (mysql-host, mysql-port, mysql-user, mysql-password, mysql-db) unless set here. */
   MYSQL_HOST: optionalString,
@@ -66,34 +62,25 @@ export const ConfigSchema = z.object({
   /** The team's patient table in the same database (the infra branch reads `SELECT * FROM patientinfo`). Read-only for this backend. */
   PATIENTS_TABLE: z.string().regex(/^[A-Za-z0-9_]+$/, "a plain table name").default("patientinfo"),
 
-  /** auto: DynamoDB when Secrets Manager supplied the table, else the SQL twin. */
-  DOC_STORE: z.enum(["auto", "local", "dynamo"]).default("auto"),
   /** The team table (hash key uid, TTL expiresAt). Filled from the secret's dynamodb-table. */
   DYNAMO_TABLE: z.string().default("discharge-summaries"),
   /** Name of the table's hash key attribute (the secret's dynamodb-table-pk). */
   DYNAMO_PK: z.string().default("uid"),
-  DYNAMO_ENDPOINT: optionalString,
 
-  LLM_PROVIDER: z.enum(["offline", "bedrock", "anthropic"]).default("offline"),
+  LLM_PROVIDER: z.enum(["bedrock", "anthropic"]).default("bedrock"),
   AWS_REGION: z.string().default("us-west-2"),
   BEDROCK_MODEL_ID: z.string().default("us.anthropic.claude-sonnet-4-6"),
   ANTHROPIC_API_KEY: optionalString,
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
 
-  SPEECH_PROVIDER: z.enum(["offline", "transcribe"]).default("offline"),
   TRANSCRIBE_OUTPUT_BUCKET: optionalString,
 
-  /** The team contract's PDF bucket (`arn:aws:s3:::emrpdf-rh`): auto = S3 when Secrets Manager resolved and the bucket answers, else the local twin. */
-  PDF_STORE: storeMode,
+  /** The team contract's PDF bucket (`arn:aws:s3:::emrpdf-rh`). */
   PDF_BUCKET: z.string().default("emrpdf-rh"),
-  PDF_DIR: z.string().default("data/pdf"),
-  /** The team's audio bucket ("EMR audio"); same resolution as the PDF bucket. */
-  AUDIO_STORE: storeMode,
+  /** The team's audio bucket ("EMR audio"). */
   AUDIO_BUCKET: z.string().default("emraudio-rh"),
-  AUDIO_DIR: z.string().default("data/audio"),
-  /** Where deletion receipts go: sql (audit_log, default), file, console, dynamo (receipt# items in the table). */
-  AUDIT_SINK: z.enum(["sql", "file", "console", "dynamo"]).default("sql"),
-  AUDIT_FILE: z.string().default("data/audit/receipts.jsonl"),
+  /** Where deletion receipts go: sql (audit_log, default) or dynamo (receipt# items in the table). */
+  AUDIT_SINK: z.enum(["sql", "dynamo"]).default("sql"),
 
   EMAIL_TRANSPORT: z.enum(["console", "smtp", "ses"]).default("console"),
   EMAIL_FROM: z.string().default("DischargeAI <noreply@example.test>"),

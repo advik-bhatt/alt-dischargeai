@@ -1,10 +1,5 @@
 import { Router } from "express";
 import type { AppContext } from "../context.js";
-import type { ObjectStore, ObjectStoreStatus } from "../data/objects.js";
-
-function objectStoreHealth(store: ObjectStore, status: ObjectStoreStatus) {
-  return { store: status.active, requested: status.requested, bucket: status.bucket, target: store.describe(), fallbackReason: status.fallbackReason ?? null };
-}
 
 export function healthRouter(ctx: AppContext): Router {
   const r = Router();
@@ -25,14 +20,13 @@ export function healthRouter(ctx: AppContext): Router {
       },
       providers: {
         llm: ctx.simplifier.name,
-        llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.LLM_PROVIDER === "anthropic" ? ctx.config.ANTHROPIC_MODEL : "rules",
+        llmModel: ctx.config.LLM_PROVIDER === "bedrock" ? ctx.config.BEDROCK_MODEL_ID : ctx.config.ANTHROPIC_MODEL,
         speech: ctx.speechToText.name,
-        sql: ctx.db.dialect,
         sqlConnection: ctx.db.describe,
         docStore: ctx.summaries.name,
         docStoreTarget: ctx.summaries.describe,
-        pdf: objectStoreHealth(ctx.pdf, ctx.pdfStatus),
-        audio: objectStoreHealth(ctx.audio, ctx.audioStatus),
+        pdf: ctx.pdf.describe(),
+        audio: ctx.audio.describe(),
         receipts: ctx.receipts.name,
         email: ctx.mailer.transportName,
         emailQueue: ctx.emailQueue ? "sqs" : "none",

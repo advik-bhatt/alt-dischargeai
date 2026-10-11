@@ -1,15 +1,8 @@
 node_modules/
-/data/
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
 .env
 .env.*
 !.env.example
 coverage/
 dist/
-docker/dynamodb/
-.dynamodb-local/
 *.log
 .DS_Store

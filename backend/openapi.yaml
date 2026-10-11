@@ -127,7 +127,7 @@ components:
         text: { type: string }
         tier: { type: string, enum: [call911, er, clinic], description: call911 = life-threatening, er = same-day care, clinic = call the care team }
     AiOutput:
-      description: The fixed JSON the AI pipeline returns per language (contracts/ai-output.schema.json). Exactly these five keys.
+      description: The fixed JSON the AI pipeline returns per language (src/contracts/aiOutput.ts). Exactly these five keys.
       type: object
       required: [language, steps, medications, followUps, warnings]
       additionalProperties: false
@@ -276,22 +276,15 @@ components:
         providers:
           type: object
           properties:
-            llm: { type: string, enum: [offline, bedrock, anthropic] }
+            llm: { type: string, enum: [bedrock, anthropic] }
             llmModel: { type: string }
-            speech: { type: string, enum: [offline, transcribe] }
-            sql: { type: string, enum: [sqlite, mysql] }
-            sqlConnection: { type: string }
-            docStore: { type: string, enum: [local, dynamo] }
+            speech: { type: string, enum: [transcribe] }
+            sqlConnection: { type: string, description: The RDS connection, without the password }
+            docStore: { type: string, enum: [dynamo] }
             docStoreTarget: { type: string }
-            audio:
-              type: object
-              properties:
-                store: { type: string, enum: [local, s3] }
-                requested: { type: string, enum: [local, s3] }
-                bucket: { type: string }
-                target: { type: string }
-                fallbackReason: { type: string, nullable: true, description: Set when S3 was requested but the bucket was unreachable at boot }
-            receipts: { type: string, enum: [sql, file, console, dynamo] }
+            pdf: { type: string, description: The PDF bucket as s3://name }
+            audio: { type: string, description: The audio bucket as s3://name }
+            receipts: { type: string, enum: [sql, dynamo] }
             email: { type: string, enum: [console, smtp, ses] }
             emailQueue: { type: string, enum: [none, sqs] }
         queue:

@@ -1,7 +1,7 @@
 /**
  * Opens the configured SQL database, applies the migrations and prints what it found. Use it from a
  * host that can reach RDS on port 3306 (the team's EC2 box) to prove the MariaDB path:
- *   npm run check-sql                                   SQLite (default) or the Secrets Manager values
+ *   npm run check-sql                                   the Secrets Manager values (AWS credentials in the shell)
  *   DATABASE_URL='mysql://admin:<password>@patients.cleqcmkoulma.us-west-2.rds.amazonaws.com:3306/dischargeai' npm run check-sql
  * It also reads the team's patients table (PATIENTS_TABLE, default patientinfo): its real column names,
  * how they map to the GET /patients keys, and its row count. Never values. The password is never
@@ -29,6 +29,6 @@ try {
 } catch (err) {
   patients = { table: config.PATIENTS_TABLE, error: (err as Error).message };
 }
-const version = db.dialect === "mysql" ? (await db.get<{ v: string }>("SELECT VERSION() AS v"))?.v : (await db.get<{ v: string }>("SELECT sqlite_version() AS v"))?.v;
+const version = (await db.get<{ v: string }>("SELECT VERSION() AS v"))?.v;
 await db.close();
-console.log(JSON.stringify({ ok: true, dialect: db.dialect, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, preContractTablesSetAside: setAside, counts, patients, ms: Date.now() - t0 }, null, 2));
+console.log(JSON.stringify({ ok: true, connection: db.describe, serverVersion: version, configSource: secrets.source, fromSecret: secrets.applied, migrationsApplied: ran, preContractTablesSetAside: setAside, counts, patients, ms: Date.now() - t0 }, null, 2));

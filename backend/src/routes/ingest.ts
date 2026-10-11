@@ -59,8 +59,7 @@ export function ingestRouter(ctx: AppContext): Router {
   r.post("/ingest", upload, async (req, res) => {
     const parsed = req.is("multipart/form-data") ? parseMultipart(req.body, (req.files ?? {}) as UploadedFiles) : parseJson(req.body);
     if (parsed.file && parsed.file.buffer.length > ctx.config.MAX_UPLOAD_BYTES) throw new AppError(413, "file_too_large", `The file is larger than ${ctx.config.MAX_UPLOAD_BYTES} bytes`);
-    const limited = ctx.config.LLM_PROVIDER !== "offline";
-    if (limited && (parsed.text?.length ?? 0) > MAX_LLM_CHARS) throw badRequest("input_too_long", `Text is limited to ${MAX_LLM_CHARS.toLocaleString("en-US")} characters`);
+    if ((parsed.text?.length ?? 0) > MAX_LLM_CHARS) throw badRequest("input_too_long", `Text is limited to ${MAX_LLM_CHARS.toLocaleString("en-US")} characters`);
 
     const patient = await ctx.patients.getById(parsed.patientId);
     if (!patient) throw notFound("patient_not_found", "Unknown patientID");
@@ -76,7 +75,7 @@ export function ingestRouter(ctx: AppContext): Router {
         throw badRequest("unreadable_pdf", `The PDF could not be turned into text: ${String((err as Error)?.message ?? err).slice(0, 160)}`);
       }
       text = pdf.text;
-      if (limited && text.length > MAX_LLM_CHARS) throw badRequest("input_too_long", `The PDF holds more than ${MAX_LLM_CHARS.toLocaleString("en-US")} characters of text`);
+      if (text.length > MAX_LLM_CHARS) throw badRequest("input_too_long", `The PDF holds more than ${MAX_LLM_CHARS.toLocaleString("en-US")} characters of text`);
     }
 
     const sumId = newSumId();

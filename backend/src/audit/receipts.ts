@@ -1,25 +1,22 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
 import type { Config } from "../config.js";
 import type { AuditRepo } from "../db/repos/audit.js";
 
 /**
  * Deletion receipts: the audit log's proof that data is gone. A receipt says WHAT was deleted (the
- * summary item, the PDF, the audio object), WHEN, BY WHICH MECHANISM (the purge job, DynamoDB TTL,
- * the S3 lifecycle rule, or the local sweeper standing in for both) and for which sumId. Never any
- * PHI: no text, no names, no language content. Receipts outlive the data; the sumId they name
- * answers 410 from the moment the item is gone.
- * Sinks: sql (the audit_log table, default), file (JSONL twin for Lambdas without a database),
- * console (CloudWatch Logs), dynamo (receipt# items in the discharge-summaries table, never expired).
+ * summary item, the PDF, the audio object), WHEN, BY WHICH MECHANISM (the purge job) and for which
+ * sumId. Never any PHI: no text, no names, no language content. Receipts outlive the data; the sumId
+ * they name answers 410 from the moment the item is gone. Items DynamoDB's TTL and the S3 lifecycle
+ * rules remove on their own leave no receipt.
+ * Sinks: sql (the audit_log table, default) and dynamo (receipt# items in the discharge-summaries
+ * table, never expired).
  */
-export type DeletedKind = "record" | "pdf" | "audio" | "transcript";
-export type DeletionMechanism = "purge_job" | "dynamodb_ttl" | "s3_lifecycle" | "local_sweeper";
-export type ReceiptSource = "purge" | "sweeper" | "dynamodb-stream" | "s3-event";
+export type DeletedKind = "record" | "pdf" | "audio";
+export type DeletionMechanism = "purge_job";
+export type ReceiptSource = "purge" | "sweeper";
 
 export interface DeletionReceipt {
   receiptId: string;
-  /** "-" when the deleted object carries no sumId (a Transcribe output object). */
   sumId: string;
   deleted: DeletedKind;
   mechanism: DeletionMechanism;
@@ -45,9 +42,9 @@ export function newReceipt(input: Omit<DeletionReceipt, "receiptId" | "at"> & { 
 }
 
 export interface AuditSink {
-  readonly name: "sql" | "file" | "console" | "dynamo";
+  readonly name: "sql" | "dynamo";
   append(receipt: DeletionReceipt): Promise<void>;
-  /** Oldest first. Console sink returns []. */
+  /** Oldest first. */
   list(limit?: number): Promise<DeletionReceipt[]>;
   findBySumId(sumId: string): Promise<DeletionReceipt[]>;
 }
@@ -72,57 +69,13 @@ export class SqlAuditSink implements AuditSink {
   }
 }
 
-/** Append-only JSONL file. */
-export class FileAuditSink implements AuditSink {
-  readonly name = "file" as const;
-
-  constructor(readonly file: string) {
-    mkdirSync(dirname(file), { recursive: true });
-  }
-
-  async append(receipt: DeletionReceipt): Promise<void> {
-    appendFileSync(this.file, JSON.stringify(receipt) + "\n");
-  }
-
-  async list(limit = 1000): Promise<DeletionReceipt[]> {
-    if (!existsSync(this.file)) return [];
-    const lines = readFileSync(this.file, "utf8").split("\n").filter(Boolean);
-    return lines.slice(-limit).map((l) => JSON.parse(l) as DeletionReceipt);
-  }
-
-  async findBySumId(sumId: string): Promise<DeletionReceipt[]> {
-    return (await this.list(Number.MAX_SAFE_INTEGER)).filter((r) => r.sumId === sumId);
-  }
-}
-
-/** JSON lines on stdout: what a Lambda writes to CloudWatch Logs. Not queryable, so reads return nothing. */
-export class ConsoleAuditSink implements AuditSink {
-  readonly name = "console" as const;
-
-  async append(receipt: DeletionReceipt): Promise<void> {
-    process.stdout.write(JSON.stringify({ audit: "deletion_receipt", ...receipt }) + "\n");
-  }
-
-  async list(): Promise<DeletionReceipt[]> {
-    return [];
-  }
-
-  async findBySumId(): Promise<DeletionReceipt[]> {
-    return [];
-  }
-}
-
-/** The app passes its AuditRepo; a Lambda handler that has no database uses file, console or dynamo. */
+/** The app passes its AuditRepo; a script that has none gets one on a fresh connection. */
 export async function createAuditSink(config: Config, deps: { audit?: AuditRepo } = {}): Promise<AuditSink> {
   switch (config.AUDIT_SINK) {
     case "dynamo": {
       const { DynamoAuditSink } = await import("./dynamoSink.js");
-      return new DynamoAuditSink({ tableName: config.DYNAMO_TABLE, keyAttribute: config.DYNAMO_PK, region: config.AWS_REGION, endpoint: config.DYNAMO_ENDPOINT });
+      return new DynamoAuditSink({ tableName: config.DYNAMO_TABLE, keyAttribute: config.DYNAMO_PK, region: config.AWS_REGION });
     }
-    case "console":
-      return new ConsoleAuditSink();
-    case "file":
-      return new FileAuditSink(config.AUDIT_FILE);
     case "sql":
     default: {
       if (deps.audit) return new SqlAuditSink(deps.audit);

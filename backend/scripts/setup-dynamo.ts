@@ -3,7 +3,6 @@
  * key named by DYNAMO_PK, `uid`; pay per request) and enables TTL on `expiresAt`. Safe to re-run:
  * an existing table is described, not changed; TTL already ENABLED is left alone.
  *   npm run setup-dynamo                                   team account (table name and key from Secrets Manager or env)
- *   DYNAMO_ENDPOINT=http://localhost:8000 npm run setup-dynamo   DynamoDB Local
  * IAM: dynamodb:DescribeTable, CreateTable, DescribeTimeToLive, UpdateTimeToLive.
  */
 import {
@@ -22,7 +21,7 @@ const { env, secrets } = await loadRuntimeEnv();
 const config = loadConfig(env);
 const TableName = config.DYNAMO_TABLE;
 const keyAttribute = config.DYNAMO_PK;
-const client = createDynamoClient({ region: config.AWS_REGION, endpoint: config.DYNAMO_ENDPOINT });
+const client = createDynamoClient({ region: config.AWS_REGION });
 
 let existed = true;
 let keySchema: { AttributeName?: string; KeyType?: string }[] | undefined;
@@ -65,7 +64,7 @@ client.destroy();
 
 const report = {
   table: TableName,
-  target: config.DYNAMO_ENDPOINT ?? `aws:${config.AWS_REGION}`,
+  target: `aws:${config.AWS_REGION}`,
   configSource: secrets.source,
   created: !existed,
   status,

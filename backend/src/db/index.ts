@@ -1,20 +1,14 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
-import Database from "better-sqlite3";
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import type { Config } from "../config.js";
 
 export type SqlParam = string | number | bigint | Buffer | Uint8Array | null;
-export type Dialect = "sqlite" | "mysql";
 
 /**
- * A thin, dialect-neutral SQL adapter. SQL is written with `?` placeholders and portable types;
- * repositories branch on `dialect` only where the two engines really differ (upserts). Everything
- * is async so both drivers share one interface. SQLite is the local and test default; MariaDB on
- * the team's RDS instance (`patients`, port 3306) is the documented production path, over TLS with
- * the public RDS certificate bundle.
+ * A thin SQL adapter over MariaDB on the team's RDS instance (`patients`, port 3306), over TLS with the
+ * public RDS certificate bundle. SQL is written with `?` placeholders; everything is async.
  */
 export interface Db {
-  readonly dialect: Dialect;
   /** Where this connection points, for logs and /health. Never contains the password. */
   readonly describe: string;
   run(sql: string, params?: SqlParam[]): Promise<{ changes: number }>;
@@ -25,52 +19,15 @@ export interface Db {
   close(): Promise<void>;
 }
 
-export class SqliteDb implements Db {
-  readonly dialect = "sqlite" as const;
-  readonly describe: string;
-  readonly raw: Database.Database;
-
-  constructor(file: string) {
-    if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    this.raw = new Database(file);
-    this.raw.pragma("journal_mode = WAL");
-    this.raw.pragma("foreign_keys = ON");
-    this.describe = `sqlite:${file}`;
-  }
-
-  async run(sql: string, params: SqlParam[] = []) {
-    const info = this.raw.prepare(sql).run(...params);
-    return { changes: info.changes };
-  }
-
-  async get<T>(sql: string, params: SqlParam[] = []) {
-    return this.raw.prepare(sql).get(...params) as T | undefined;
-  }
-
-  async all<T>(sql: string, params: SqlParam[] = []) {
-    return this.raw.prepare(sql).all(...params) as T[];
-  }
-
-  async exec(sql: string) {
-    this.raw.exec(sql);
-  }
-
-  async close() {
-    this.raw.close();
-  }
-}
-
 export interface MySqlOptions {
   host: string;
   port: number;
   user: string;
   password: string;
   database: string;
-  /** Path to the RDS CA bundle (AWS connection step 1). Required unless `insecure`: connecting stops when it is missing. */
+  /** Path to the RDS CA bundle (AWS connection step 1). Required: connecting stops when it is missing. */
   caBundlePath?: string;
   connectionLimit?: number;
-  /** Skip TLS entirely (a local MariaDB without certificates). Never for RDS. */
-  insecure?: boolean;
 }
 
 type MySqlPool = import("mysql2/promise").Pool;
@@ -81,31 +38,20 @@ type MySqlPool = import("mysql2/promise").Pool;
  * server-certificate verification, exactly what the AWS console's `--ssl-verify-server-cert
  * --ssl-ca=./global-bundle.pem` does for the mysql client. The database named by the secret's
  * `mysql-db` is created when missing, then every table is created inside it by the migrations.
- * Loaded lazily so SQLite-only installs never import the driver.
  */
 export class MySqlDb implements Db {
-  readonly dialect = "mysql" as const;
   readonly describe: string;
 
   private constructor(
     private readonly pool: MySqlPool,
     opts: MySqlOptions,
-    readonly tls: "ca-bundle" | "off",
   ) {
-    this.describe = `mysql://${opts.user}@${opts.host}:${opts.port}/${opts.database} (tls=${tls})`;
+    this.describe = `mysql://${opts.user}@${opts.host}:${opts.port}/${opts.database} (tls=ca-bundle)`;
   }
 
   static async connect(opts: MySqlOptions): Promise<MySqlDb> {
     const mysql = await import("mysql2/promise");
-    let ssl: import("mysql2/promise").PoolOptions["ssl"];
-    let tls: MySqlDb["tls"];
-    if (opts.insecure) {
-      ssl = undefined;
-      tls = "off";
-    } else {
-      ssl = { ca: readCaBundle(opts.caBundlePath), rejectUnauthorized: true };
-      tls = "ca-bundle";
-    }
+    const ssl = { ca: readCaBundle(opts.caBundlePath), rejectUnauthorized: true };
     const base = {
       host: opts.host,
       port: opts.port,
@@ -136,7 +82,7 @@ export class MySqlDb implements Db {
       connectionLimit: opts.connectionLimit ?? 5,
       queueLimit: 0,
     });
-    return new MySqlDb(pool, opts, tls);
+    return new MySqlDb(pool, opts);
   }
 
   async run(sql: string, params: SqlParam[] = []) {
@@ -177,39 +123,25 @@ export function splitStatements(sql: string): string[] {
     .filter(Boolean);
 }
 
-export interface ParsedDatabaseUrl {
-  dialect: Dialect;
-  file?: string;
-  mysql?: Omit<MySqlOptions, "caBundlePath" | "connectionLimit">;
-}
+export type ParsedDatabaseUrl = Omit<MySqlOptions, "caBundlePath" | "connectionLimit">;
 
 /**
- * `sqlite:<file>` | `sqlite::memory:` | `mysql://user:password@host:3306/database[?insecure=1]`.
- * The password is URL-decoded, so the RDS password's punctuation survives when it is percent-encoded.
+ * `mysql://user:password@host:3306/database`. The password is URL-decoded, so the RDS password's
+ * punctuation survives when it is percent-encoded.
  */
 export function parseDatabaseUrl(url: string): ParsedDatabaseUrl {
   const trimmed = url.trim();
-  if (/^sqlite:/i.test(trimmed)) {
-    const file = trimmed.replace(/^sqlite:(\/\/)?/i, "") || ":memory:";
-    return { dialect: "sqlite", file };
-  }
-  if (/^(mysql|mariadb):\/\//i.test(trimmed)) {
-    const u = new URL(trimmed.replace(/^mariadb:/i, "mysql:"));
-    const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
-    if (!database) throw new Error("DATABASE_URL must name a database: mysql://user:password@host:3306/dischargeai");
-    return {
-      dialect: "mysql",
-      mysql: {
-        host: u.hostname,
-        port: u.port ? Number(u.port) : 3306,
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database,
-        insecure: ["1", "true"].includes(u.searchParams.get("insecure") ?? ""),
-      },
-    };
-  }
-  throw new Error("DATABASE_URL must start with sqlite: or mysql://");
+  if (!/^(mysql|mariadb):\/\//i.test(trimmed)) throw new Error("DATABASE_URL must be mysql://user:password@host:3306/database");
+  const u = new URL(trimmed.replace(/^mariadb:/i, "mysql:"));
+  const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
+  if (!database) throw new Error("DATABASE_URL must name a database: mysql://user:password@host:3306/dischargeai");
+  return {
+    host: u.hostname,
+    port: u.port ? Number(u.port) : 3306,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database,
+  };
 }
 
 /** Where the backend lives (backend/), so relative paths in the config do not depend on the shell's directory. */
@@ -234,18 +166,14 @@ export function readCaBundle(path: string | undefined): Buffer {
 }
 
 /**
- * Resolution order: DATABASE_URL -> MYSQL_HOST (set by the Secrets Manager bootstrap or by hand) ->
- * SQLite file. With no AWS access the app therefore runs fully local.
+ * Resolution order: DATABASE_URL, then MYSQL_HOST (set by the Secrets Manager bootstrap or by hand).
+ * With neither there is nothing to connect to, and the server stops with the two ways to supply it.
  */
 export async function openDb(
-  config: Pick<Config, "DATABASE_URL" | "DATABASE_FILE" | "MYSQL_HOST" | "MYSQL_PORT" | "MYSQL_USER" | "MYSQL_PASSWORD" | "MYSQL_DATABASE" | "RDS_CA_BUNDLE" | "MYSQL_POOL_SIZE">,
+  config: Pick<Config, "DATABASE_URL" | "MYSQL_HOST" | "MYSQL_PORT" | "MYSQL_USER" | "MYSQL_PASSWORD" | "MYSQL_DATABASE" | "RDS_CA_BUNDLE" | "MYSQL_POOL_SIZE">,
 ): Promise<Db> {
   const caBundlePath = resolveCaBundlePath(config.RDS_CA_BUNDLE);
-  if (config.DATABASE_URL) {
-    const parsed = parseDatabaseUrl(config.DATABASE_URL);
-    if (parsed.dialect === "sqlite") return new SqliteDb(parsed.file!);
-    return MySqlDb.connect({ ...parsed.mysql!, caBundlePath, connectionLimit: config.MYSQL_POOL_SIZE });
-  }
+  if (config.DATABASE_URL) return MySqlDb.connect({ ...parseDatabaseUrl(config.DATABASE_URL), caBundlePath, connectionLimit: config.MYSQL_POOL_SIZE });
   if (config.MYSQL_HOST) {
     if (!config.MYSQL_USER || !config.MYSQL_PASSWORD) throw new Error("MYSQL_HOST is set but MYSQL_USER / MYSQL_PASSWORD are missing (they come from Secrets Manager or the environment)");
     return MySqlDb.connect({
@@ -258,5 +186,7 @@ export async function openDb(
       connectionLimit: config.MYSQL_POOL_SIZE,
     });
   }
-  return new SqliteDb(config.DATABASE_FILE);
+  throw new Error(
+    "No SQL database is configured. Put AWS credentials in the shell that starts the server so it can read hackhealth/secret (it holds the RDS host, user and password), or set DATABASE_URL=mysql://user:password@host:3306/dischargeai.",
+  );
 }

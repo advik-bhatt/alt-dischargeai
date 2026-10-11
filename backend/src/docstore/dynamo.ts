@@ -8,18 +8,13 @@ export interface DynamoOptions {
   /** Hash key attribute name (the secret's dynamodb-table-pk), `uid` on the team table. */
   keyAttribute?: string;
   region: string;
-  /** http://localhost:8000 for DynamoDB Local; undefined for real AWS. */
-  endpoint?: string;
 }
 
-export function createDynamoClient(opts: Pick<DynamoOptions, "region" | "endpoint">): DynamoDBClient {
-  return new DynamoDBClient({
-    region: opts.region,
-    ...(opts.endpoint ? { endpoint: opts.endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } } : {}),
-  });
+export function createDynamoClient(opts: Pick<DynamoOptions, "region">): DynamoDBClient {
+  return new DynamoDBClient({ region: opts.region });
 }
 
-/** The minimum of DynamoDBDocumentClient the store uses; tests pass a fake. */
+/** The minimum of DynamoDBDocumentClient the store uses. */
 export interface DocClient {
   send(command: PutCommand | GetCommand | UpdateCommand | DeleteCommand | ScanCommand): Promise<unknown>;
 }
@@ -43,7 +38,7 @@ export class DynamoSummaryStore implements SummaryStore {
   constructor(opts: DynamoOptions, docClient?: DocClient) {
     this.table = opts.tableName;
     this.key = opts.keyAttribute ?? "uid";
-    this.describe = `dynamodb:${opts.endpoint ?? opts.region}/${this.table} (key=${this.key}, ttl=expiresAt)`;
+    this.describe = `dynamodb:${opts.region}/${this.table} (key=${this.key}, ttl=expiresAt)`;
     this.doc = docClient ?? DynamoDBDocumentClient.from(createDynamoClient(opts), { marshallOptions: { removeUndefinedValues: true } });
   }
 

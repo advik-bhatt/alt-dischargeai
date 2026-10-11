@@ -19,7 +19,6 @@
     "setup-s3": "tsx scripts/setup-s3.ts",
     "ensure-s3-lifecycle": "tsx scripts/ensure-s3-lifecycle.ts",
     "email-worker": "tsx scripts/email-worker.ts",
-    "export-contract": "tsx scripts/export-contract.ts",
     "docs": "tsx scripts/swagger-docs.ts"
   },
   "dependencies": {
@@ -32,7 +31,6 @@
     "@aws-sdk/client-sqs": "^3.1149.0",
     "@aws-sdk/client-transcribe": "^3.1149.0",
     "@aws-sdk/lib-dynamodb": "^3.1149.0",
-    "better-sqlite3": "^13.0.3",
     "express": "^5.3.0",
     "multer": "^2.4.0",
     "mysql2": "^3.24.5",
@@ -48,7 +46,6 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.3.0",
     "@types/node": "^24.19.2",

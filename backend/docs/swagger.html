@@ -317,7 +317,7 @@
         }
       },
       "AiOutput": {
-        "description": "The fixed JSON the AI pipeline returns per language (contracts/ai-output.schema.json). Exactly these five keys.",
+        "description": "The fixed JSON the AI pipeline returns per language (src/contracts/aiOutput.ts). Exactly these five keys.",
         "type": "object",
         "required": [
           "language",
@@ -870,7 +870,6 @@
               "llm": {
                 "type": "string",
                 "enum": [
-                  "offline",
                   "bedrock",
                   "anthropic"
                 ]
@@ -881,66 +880,35 @@
               "speech": {
                 "type": "string",
                 "enum": [
-                  "offline",
                   "transcribe"
                 ]
               },
-              "sql": {
-                "type": "string",
-                "enum": [
-                  "sqlite",
-                  "mysql"
-                ]
-              },
               "sqlConnection": {
-                "type": "string"
+                "type": "string",
+                "description": "The RDS connection",
+                "without the password": null
               },
               "docStore": {
                 "type": "string",
                 "enum": [
-                  "local",
                   "dynamo"
                 ]
               },
               "docStoreTarget": {
                 "type": "string"
               },
+              "pdf": {
+                "type": "string",
+                "description": "The PDF bucket as s3://name"
+              },
               "audio": {
-                "type": "object",
-                "properties": {
-                  "store": {
-                    "type": "string",
-                    "enum": [
-                      "local",
-                      "s3"
-                    ]
-                  },
-                  "requested": {
-                    "type": "string",
-                    "enum": [
-                      "local",
-                      "s3"
-                    ]
-                  },
-                  "bucket": {
-                    "type": "string"
-                  },
-                  "target": {
-                    "type": "string"
-                  },
-                  "fallbackReason": {
-                    "type": "string",
-                    "nullable": true,
-                    "description": "Set when S3 was requested but the bucket was unreachable at boot"
-                  }
-                }
+                "type": "string",
+                "description": "The audio bucket as s3://name"
               },
               "receipts": {
                 "type": "string",
                 "enum": [
                   "sql",
-                  "file",
-                  "console",
                   "dynamo"
                 ]
               },

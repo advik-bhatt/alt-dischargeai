@@ -59,8 +59,8 @@ export async function runIngestJob(ctx: AppContext, jobId: string, pending?: Pen
     if (!text) {
       if (job.inputKind !== "audio" || !pending?.file) throw new Error("restart_before_transcription: the audio was lost when the process restarted");
       await setStage("transcribing");
-      // Transcribe Medical reads the clip from the bucket by key; with the local twin it gets the bytes.
-      const r = await ctx.speechToText.transcribe({ audio: pending.file.buffer, mimeType: pending.file.mimeType, fileName: pending.file.fileName, audioKey: ctx.audio.name === "s3" ? (link.audioKey ?? undefined) : undefined });
+      // Transcribe Medical reads the clip from the audio bucket by key.
+      const r = await ctx.speechToText.transcribe({ audio: pending.file.buffer, mimeType: pending.file.mimeType, fileName: pending.file.fileName, audioKey: link.audioKey ?? undefined });
       await jobs.mergeMeta(jobId, { speechProvider: r.provider, transcribeJobName: r.jobName, transcribeMs: r.latencyMs }, clock.nowIso());
       text = normalizeText(r.transcript);
       if (!text) throw new Error("empty_input_after_transcription");

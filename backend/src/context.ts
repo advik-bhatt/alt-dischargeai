@@ -1,14 +1,14 @@
 import { createAuditSink, type AuditSink } from "./audit/receipts.js";
 import { Clock } from "./clock.js";
 import { LINK_TTL_DAYS, loadConfig, type Config } from "./config.js";
-import { createObjectStores, type ObjectStore, type ObjectStoreStatus } from "./data/objects.js";
+import { createObjectStores, type ObjectStore } from "./data/objects.js";
 import { migrate } from "./db/migrate.js";
 import { openDb, type Db } from "./db/index.js";
 import { ActiveLinksRepo } from "./db/repos/activeLinks.js";
 import { AuditRepo } from "./db/repos/audit.js";
 import { JobsRepo } from "./db/repos/jobs.js";
 import { PatientsRepo } from "./db/repos/patients.js";
-import { createSummaryStore, resolveDocStore, type SummaryStore } from "./docstore/index.js";
+import { createSummaryStore, type SummaryStore } from "./docstore/index.js";
 import { createMailer, type Mailer } from "./email/mailer.js";
 import { createSqsEmailQueue, type EmailQueue } from "./email/queue.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -22,7 +22,7 @@ import type { SecretsBootstrapResult } from "./secrets.js";
 
 export const NO_SECRETS: SecretsBootstrapResult = { source: "env", applied: [], overriddenByEnv: [], missingKeys: [], reason: "not attempted", ms: 0 };
 
-/** Everything a route or a job needs, wired once at boot. Tests build one per test file. */
+/** Everything a route or a job needs, wired once at boot. */
 export interface AppContext {
   config: Config;
   /** Where the configuration came from (names only), for /health. */
@@ -34,14 +34,12 @@ export interface AppContext {
   activeLinks: ActiveLinksRepo;
   jobs: JobsRepo;
   audit: AuditRepo;
-  /** The team table (one item per summary) or its SQL twin. */
+  /** The team DynamoDB table (one item per summary). */
   summaries: SummaryStore;
-  /** The PDF bucket (emrpdf-rh) or its local twin. */
+  /** The PDF bucket (emrpdf-rh). */
   pdf: ObjectStore;
-  pdfStatus: ObjectStoreStatus;
-  /** The audio bucket (emraudio-rh) or its local twin. */
+  /** The audio bucket (emraudio-rh). */
   audio: ObjectStore;
-  audioStatus: ObjectStoreStatus;
   /** Deletion receipts sink (sql by default). */
   receipts: AuditSink;
   simplifier: Simplifier;
@@ -61,13 +59,8 @@ export interface AppContext {
 export interface CreateContextOptions {
   env?: Record<string, string | undefined>;
   overrides?: Partial<Config>;
-  /** The Secrets Manager bootstrap report from loadRuntimeEnv (the server); one-shot scripts omit it. */
+  /** The Secrets Manager bootstrap report from loadRuntimeEnv, for /health. */
   secrets?: SecretsBootstrapResult;
-  /** Swap any provider. */
-  simplifier?: Simplifier;
-  translator?: Translator;
-  speechToText?: SpeechToText;
-  mailer?: Mailer;
   /** Re-enqueue jobs left unfinished by a previous process (the API server does; one-shot scripts must not). */
   resumeJobs?: boolean;
 }
@@ -80,7 +73,7 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const db = await openDb(config);
   log.info({ sql: db.describe }, "sql connected");
   const ran = await migrate(db, () => clock.nowIso(), (changes) => log.warn({ changes }, "pre-contract tables set aside: renamed to *_pre_contract, rows kept"));
-  if (ran.length) log.info({ migrations: ran, dialect: db.dialect }, "migrations applied");
+  if (ran.length) log.info({ migrations: ran }, "migrations applied");
 
   // The team's patient table, read-only. Its columns are mapped once here; startup stops with the real
   // column list when the table is missing or has no id column, instead of serving the wrong data.
@@ -92,17 +85,16 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
   const jobs = new JobsRepo(db);
   const audit = new AuditRepo(db);
   const secrets = opts.secrets ?? NO_SECRETS;
-  const secretResolved = secrets.source === "secrets-manager";
-  const summaries = createSummaryStore(config, db, resolveDocStore(config, secretResolved));
+  const summaries = createSummaryStore(config);
   log.info({ docStore: summaries.describe }, "document store");
-  const stores = await createObjectStores(config, secretResolved, log);
+  const stores = createObjectStores(config);
+  log.info({ pdf: stores.pdf.describe(), audio: stores.audio.describe() }, "object stores");
   const receipts = await createAuditSink(config, { audit });
 
-
-  const simplifier = opts.simplifier ?? (await createSimplifier(config, log));
-  const translator = opts.translator ?? (await createTranslator(config, log));
-  const speechToText = opts.speechToText ?? (await createSpeechToText(config, log));
-  const mailer = opts.mailer ?? (await createMailer(config, log));
+  const simplifier = await createSimplifier(config, log);
+  const translator = await createTranslator(config, log);
+  const speechToText = await createSpeechToText(config, log);
+  const mailer = await createMailer(config, log);
   const emailQueue =
     config.EMAIL_QUEUE === "sqs"
       ? createSqsEmailQueue({ queueUrl: requireEnv(config.SQS_QUEUE_URL, "SQS_QUEUE_URL"), region: config.AWS_REGION })
@@ -121,10 +113,8 @@ export async function createContext(opts: CreateContextOptions = {}): Promise<Ap
     jobs,
     audit,
     summaries,
-    pdf: stores.pdf.store,
-    pdfStatus: stores.pdf.status,
-    audio: stores.audio.store,
-    audioStatus: stores.audio.status,
+    pdf: stores.pdf,
+    audio: stores.audio,
     receipts,
     simplifier,
     translator,

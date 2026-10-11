@@ -7,7 +7,6 @@ export interface DynamoSinkOptions {
   tableName: string;
   keyAttribute?: string;
   region: string;
-  endpoint?: string;
 }
 
 export const RECEIPT_PREFIX = "receipt#";
@@ -16,7 +15,7 @@ export const RECEIPT_PREFIX = "receipt#";
  * Receipts as items of the same `discharge-summaries` table, keyed `receipt#<sumId>#<receiptId>`
  * with NO expiresAt and NO sum-id attribute, so TTL never removes them and the summary store's
  * backstop sweep (which filters on sum-id) never sees them: the proof outlives the data without a
- * second table in the team account. The stream handler ignores receipt keys.
+ * second table in the team account.
  * IAM: dynamodb:PutItem, Scan.
  */
 export class DynamoAuditSink implements AuditSink {
