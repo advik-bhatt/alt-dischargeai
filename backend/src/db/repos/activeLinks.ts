@@ -111,6 +111,15 @@ export class ActiveLinksRepo {
     return row ? toRecord(row) : undefined;
   }
 
+  /** Every link still alive (not expired or purged), newest first. */
+  async listLive(nowIso: string): Promise<ActiveLink[]> {
+    const rows = await this.db.all<ActiveLinkRow>(
+      "SELECT * FROM activeLinks WHERE status NOT IN ('expired', 'purged') AND expiresAt > ? ORDER BY id DESC",
+      [nowIso],
+    );
+    return rows.map(toRecord);
+  }
+
   async count(): Promise<number> {
     const row = await this.db.get<{ n: number | string }>("SELECT COUNT(*) AS n FROM activeLinks");
     return Number(row?.n ?? 0);

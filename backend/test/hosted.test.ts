@@ -68,6 +68,13 @@ test("hosted mode signs in, ingests, serves the plan and keeps it across a resta
     const summary = await (await fetch(`${h.origin}/api/llm-summary?sum-id=${sumId!}`)).json();
     assert.equal(summary["llm-summary"].summary, "Plan for: Synthetic hosted notes");
     assert.equal((await fetch(h.origin + "/api/auth/link", json({ token: sumId!, dob: "1990-05-07", role: "patient" }))).status, 401);
+    // Check-ins are stored on the Postgres summary item and reach the follow-up board.
+    const checkin = await fetch(h.origin + "/api/checkin", json({ token: sumId!, meds: "none", weightLb: 170 }));
+    assert.equal(checkin.status, 201);
+    const board = await (await fetch(h.origin + "/api/followups", { headers: { "x-provider-key": env.PROVIDER_API_KEY } })).json();
+    const row = board.followups.find((f: { sumId: string }) => f.sumId === sumId);
+    assert.equal(row.level, "attention"); assert.equal(row.lastWeightLb, 170);
+    assert.equal(((await h.ctx.summaries.get(sumId!))?.checkins ?? []).length, 1);
   } finally { await h.close(); }
 });
 
@@ -83,4 +90,31 @@ test("hosted AWS credentials under DISCHARGEAI_AWS_* replace the standard names"
   applyHostedAwsCredentials(permanent);
   assert.equal(permanent.AWS_SESSION_TOKEN, undefined);
   assert.equal(applyHostedAwsCredentials({}), "none");
+});
+
+test("hosted /health hides the diagnostics from anonymous callers and shows them with the provider key", async () => {
+  const express = (await import("express")).default;
+  const { healthRouter } = await import("../src/routes/health.js");
+  const key = "hosted-test-provider-key-0123456789";
+  const ctx = {
+    mode: "hosted", config: { PROVIDER_API_KEY: key }, linkTtlDays: 30,
+    agent: { name: "agentcore", runtimeArn: "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/Example" },
+    liveDictation: { name: "transcribe-medical-streaming" }, translator: {}, readAloud: undefined, chat: {},
+    clock: { nowIso: () => "2026-10-11T00:00:00.000Z", offsetDays: 0, demoNow: null },
+    secrets: { source: "env", applied: [], overriddenByEnv: [], missingKeys: [] },
+    speechToText: { name: "unavailable" }, db: { describe: "postgres://dischargeai_app.ref@pooler.example:5432/postgres" },
+    summaries: { name: "postgres", describe: "postgres hosted_summaries" }, pdf: { describe: () => "pdf" }, audio: { describe: () => "audio" },
+    receipts: { name: "sql" }, mailer: { transportName: "console" }, queue: { size: 0 },
+  } as unknown as import("../src/context.js").AppContext;
+  const server = express().use(healthRouter(ctx)).listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const anonymous = await (await fetch(origin + "/health")).text();
+    assert.deepEqual(Object.keys(JSON.parse(anonymous)).sort(), ["capabilities", "linkTtlDays", "mode", "ok", "service"]);
+    assert.doesNotMatch(anonymous, /123456789012|dischargeai_app|pooler/);
+    assert.equal(JSON.parse(await (await fetch(origin + "/health", { headers: { "x-provider-key": "wrong" } })).text()).providers, undefined);
+    const full = await (await fetch(origin + "/health", { headers: { "x-provider-key": key } })).json();
+    assert.equal(full.providers.agentRuntimeArn, "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/Example");
+  } finally { server.close(); }
 });

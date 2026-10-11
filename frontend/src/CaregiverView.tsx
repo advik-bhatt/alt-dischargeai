@@ -10,6 +10,7 @@ import { t } from "./i18n"
 import { DeletionTimer } from "./DeletionTimer"
 import { useDischarge } from "./useDischarge"
 import { PlanChat } from "./PlanChat"
+import { CheckIn } from "./CheckIn"
 
 // Caregiver chrome renders in English (the task explicitly allows defaulting
 // the caregiver view to en, as long as nothing is half-translated). Routing
@@ -90,6 +91,9 @@ export function CaregiverView({
 
         {value?.flags.map((flag, i) => <p className="auth-notice" role="status" key={i}>{flag}</p>)}
         {value?.status && <p className="heading-support">Review status: {value.status}</p>}
+        {plan && session.patientToken ? (
+          <CheckIn token={session.patientToken} plan={plan} language={CG} by="caregiver" />
+        ) : null}
         {!plan ? (
           <section className="side-card" aria-live="polite">
             {error ? <p role="alert">{error}</p> : <p style={{ whiteSpace: "pre-wrap" }}>{loading ? "Loading the plan…" : value?.summary || t(CG, "caregiverNoPatient")}</p>}

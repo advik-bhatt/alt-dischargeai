@@ -743,6 +743,7 @@
     "/health": {
       "get": {
         "summary": "Liveness, clock, configuration source and active providers",
+        "description": "In hosted mode an anonymous caller gets only ok, service, mode, capabilities and linkTtlDays. The clock, configuration and providers need x-provider-key.",
         "responses": {
           "200": {
             "description": "OK",
@@ -1526,6 +1527,270 @@
           },
           "501": {
             "description": "ElevenLabs not configured"
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "tags": [
+          "patient"
+        ],
+        "summary": "Ask a question about this patient's Going-Home Plan (medicines, appointments, follow-up)",
+        "description": "Answers come only from the plan. Emergencies get 911/988 at once; \"should I take X\" is decided from the plan's medicine lists; anything the plan does not say gets \"please call your nurse or doctor\". The question text is not stored; the browser sends the recent conversation back with each question.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "question"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "question": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "history": {
+                    "type": "array",
+                    "maxItems": 6,
+                    "description": "Earlier [question, answer] pairs from this conversation",
+                    "items": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer, how it was decided, and the plan lines it rests on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "route": {
+                      "type": "string",
+                      "enum": [
+                        "emergency",
+                        "crisis",
+                        "medicine",
+                        "plan_answer",
+                        "referral",
+                        "clarify",
+                        "other",
+                        "medication_mistake"
+                      ]
+                    },
+                    "quotes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or link id"
+          },
+          "404": {
+            "description": "Unknown bearer link"
+          },
+          "409": {
+            "description": "The plan has no text to answer from"
+          },
+          "410": {
+            "description": "Link expired or purged"
+          },
+          "425": {
+            "description": "Plan processing"
+          },
+          "429": {
+            "description": "Rate limit"
+          },
+          "500": {
+            "description": "The assistant failed"
+          },
+          "501": {
+            "description": "The plan assistant is not configured"
+          }
+        }
+      }
+    },
+    "/checkin": {
+      "post": {
+        "tags": [
+          "patient"
+        ],
+        "summary": "Record today's check-in on this patient's plan (the 30 days after discharge)",
+        "description": "The patient or caregiver answers from their own plan. Flags are rules in code, not a model, and the care team sees them on GET /followups. A get-help-now warning sign is urgent; a call-your-doctor sign, missed medicines, weight up 2 lb since the last check-in or 5 lb in a week, or a missed teach-back question needs attention. Check-ins are stored on the summary item and deleted with it at day 30. The audit log records the day and the rule codes, never the answers.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "meds"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "by": {
+                    "type": "string",
+                    "enum": [
+                      "patient",
+                      "caregiver"
+                    ],
+                    "default": "patient"
+                  },
+                  "language": {
+                    "type": "string",
+                    "default": "en"
+                  },
+                  "meds": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "some",
+                      "none",
+                      "no_meds"
+                    ]
+                  },
+                  "urgentSigns": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "description": "Lines from the plan's get-help-now list the patient picked",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "callDoctorSigns": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "description": "Lines from the plan's call-your-doctor list the patient picked",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "weightLb": {
+                    "type": "number",
+                    "minimum": 40,
+                    "maximum": 800
+                  },
+                  "teachBack": {
+                    "type": "object",
+                    "required": [
+                      "medicine",
+                      "correct"
+                    ],
+                    "properties": {
+                      "medicine": {
+                        "type": "string"
+                      },
+                      "correct": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The check-in with its flags, and the plan's follow-up so far"
+          },
+          "400": {
+            "description": "Invalid body or link id"
+          },
+          "404": {
+            "description": "Unknown link"
+          },
+          "410": {
+            "description": "Link expired or purged"
+          },
+          "425": {
+            "description": "Plan processing"
+          },
+          "429": {
+            "description": "Rate limit"
+          }
+        }
+      }
+    },
+    "/checkins": {
+      "get": {
+        "tags": [
+          "patient"
+        ],
+        "summary": "This plan's check-ins and follow-up so far (day of 30, days checked in, current flags)",
+        "parameters": [
+          {
+            "name": "sum_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "followUp and the check-ins, oldest first"
+          },
+          "400": {
+            "description": "Invalid link id"
+          },
+          "404": {
+            "description": "Unknown link"
+          },
+          "410": {
+            "description": "Link expired or purged"
+          }
+        }
+      }
+    },
+    "/followups": {
+      "get": {
+        "tags": [
+          "provider"
+        ],
+        "security": [
+          {
+            "providerKey": []
+          }
+        ],
+        "summary": "Every live plan's 30-day follow-up, urgent first, then needs attention, then on track",
+        "description": "Per plan, the day of 30, days checked in, last weight and its change since the first check-in, the latest check-in's flags plus \"no check-in for N days\" after a gap of 2 days, and a per-day timeline.",
+        "responses": {
+          "200": {
+            "description": "The follow-up board"
+          },
+          "401": {
+            "description": "Missing or invalid x-provider-key"
           }
         }
       }

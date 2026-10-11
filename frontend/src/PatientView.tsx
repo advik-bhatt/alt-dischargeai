@@ -15,6 +15,7 @@ import { useFontScale } from "./fontScale"
 import { DeletionTimer } from "./DeletionTimer"
 import { useReadAloud } from "./useReadAloud"
 import { PlanChat } from "./PlanChat"
+import { CheckIn } from "./CheckIn"
 import { useDischarge } from "./useDischarge"
 import { speechTextFor } from "./speechText"
 
@@ -213,6 +214,9 @@ export function PatientView({
         {state === "loading" && <p className="auth-notice" role="status">Preparing audio… Playback will start when it is ready.</p>}
         <audio ref={audioRef} controls hidden={state === "idle" || state === "loading"} aria-label="Patient plan audio" />
         {value?.status && <p className="heading-support">Review status: {value.status}</p>}
+        {plan && session.patientToken ? (
+          <CheckIn token={session.patientToken} plan={plan} language={language} by="patient" />
+        ) : null}
         {!plan ? (
           <section className="patient-section" aria-live="polite">
             {error ? <p role="alert">{error}</p> : <p style={{ whiteSpace: "pre-wrap" }}>{loading ? "Loading your plan…" : value?.summary || t(language, "planUnavailable")}</p>}

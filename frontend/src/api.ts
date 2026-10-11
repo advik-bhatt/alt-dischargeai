@@ -76,3 +76,17 @@ export function fileToBase64(file: File): Promise<string> {
 export async function providerLogin(email: string, password: string) {
   return request<Omit<Session, "exp">>("/auth/login", jsonBody({ email, password }))
 }
+export type CheckInFlag = { level: "urgent" | "attention"; code: string; text: string }
+export type FollowUp = {
+  day: number; daysCheckedIn: number; checkedInToday: boolean; lastCheckinAt: string | null
+  lastWeightLb: number | null; weightChangeLb: number | null; flags: CheckInFlag[]; level: "urgent" | "attention" | "ok"
+  timeline: { day: number; level: "urgent" | "attention" | "ok" }[]
+}
+export type CheckInInput = {
+  token: string; by: "patient" | "caregiver"; language: string; meds: "all" | "some" | "none" | "no_meds"
+  urgentSigns: string[]; callDoctorSigns: string[]; weightLb?: number; teachBack?: { medicine: string; correct: boolean }
+}
+export const postCheckIn = (input: CheckInInput) => request<{ checkin: { flags: CheckInFlag[] }; followUp: FollowUp }>("/checkin", jsonBody(input))
+export const getCheckIns = (token: string) => request<{ followUp: FollowUp }>(`/checkins?sum_id=${encodeURIComponent(token)}`)
+export type FollowUpRow = FollowUp & { patientID: string; sumId: string; link: string; createdAt: string; expiresAt: string }
+export const getFollowUps = async (key: string) => (await request<{ followups: FollowUpRow[] }>("/followups", { headers: provider(key) })).followups

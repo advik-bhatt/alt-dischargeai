@@ -3,7 +3,8 @@ import { Icon, BrandMark } from "./ui"
 import { type Session } from "./auth"
 import { useLiveDictation } from "./useLiveDictation"
 import { extractPdfText } from "./extractPdfText"
-import { postIngest, getPatients, getPatient, waitForJob, fileToBase64, getHealth, registerPatient, type Accepted } from "./api"
+import { postIngest, getPatients, getPatient, waitForJob, fileToBase64, getHealth, registerPatient, getFollowUps, type Accepted, type FollowUpRow } from "./api"
+import { CheckInDots } from "./CheckIn"
 
 type Patient = {
   id: string
@@ -101,6 +102,14 @@ export function DoctorDashboard({
   const [registration, setRegistration] = useState({ ID: "", DOB: "", FirstName: "", LastName: "", email: "", caregiverEmail: "" })
   const [registrationError, setRegistrationError] = useState<string>()
   const [savingPatient, setSavingPatient] = useState(false)
+  const [followUps, setFollowUps] = useState<FollowUpRow[]>()
+  // The 30-day follow-up board: refreshed on load, every 30 seconds, and after each plan is sent.
+  const refreshFollowUps = () => getFollowUps(session.providerKey ?? "").then(setFollowUps).catch(() => undefined)
+  useEffect(() => {
+    refreshFollowUps()
+    const timer = setInterval(refreshFollowUps, 30_000)
+    return () => clearInterval(timer)
+  }, [session.providerKey])
   const handleRegister = async (event: React.FormEvent) => {
     event.preventDefault(); setSavingPatient(true); setRegistrationError(undefined)
     try {
@@ -131,8 +140,8 @@ export function DoctorDashboard({
     return () => { active = false }
   }, [session.providerKey, session.displayName])
   const stats: Stat[] = [
-    { label: "Pending discharges", value: "—", hint: "Not reported by the API" },
-    { label: "Drafts in review", value: "—", hint: "Not reported by the API" },
+    { label: "Flagged follow-ups", value: followUps ? String(followUps.filter(f => f.level !== "ok").length) : "—", hint: followUps ? `Of ${followUps.length} live plans` : "Loading", highlight: !!followUps?.some(f => f.level === "urgent") },
+    { label: "Checked in today", value: followUps ? String(followUps.filter(f => f.checkedInToday).length) : "—", hint: "Patients and caregivers" },
     { label: "Sent today", value: String(activity.length), hint: "This browser session" },
     { label: "Avg. completion time", value: "—", hint: "Not reported by the API" },
   ]
@@ -248,6 +257,7 @@ export function DoctorDashboard({
       setSendMessage("Plan ready. Open the patient link below.")
       setPatients(prev => prev.map(p => p.id === selectedPatient.id ? { ...p, status: "Ready" } : p))
       setActivity(prev => [{ description: "Writeup processed", time: "Just now" }, ...prev])
+      refreshFollowUps()
     } catch (err) {
       setSendMessage(undefined)
       setSendError(err instanceof Error ? err.message : "Could not prepare the plan")
@@ -508,6 +518,30 @@ export function DoctorDashboard({
             </section>
 
             <aside className="side-column" aria-label="Discharge details">
+              <section className="side-card followup-card" aria-labelledby="followup-head">
+                <div className="side-card-head">
+                  <h3 id="followup-head">30-day follow-up</h3>
+                  <span className="checklist-count">{followUps ? `${followUps.length} live` : "…"}</span>
+                </div>
+                {followUps && !followUps.length && <p className="followup-empty">No live plans yet. Check-ins appear here once a patient has a plan.</p>}
+                <ul className="followup-list">
+                  {(followUps ?? []).map(f => {
+                    const name = patients.find(p => p.id === f.patientID)?.name ?? `Patient ${f.patientID}`
+                    return (
+                      <li className={`followup-row is-${f.level}`} key={f.sumId}>
+                        <button className="followup-main" onClick={() => setSelectedPatientId(f.patientID)} type="button">
+                          <span className="followup-name">{name}</span>
+                          <span className={`followup-level is-${f.level}`}>{f.level === "urgent" ? "Urgent" : f.level === "attention" ? "Check" : "On track"}</span>
+                        </button>
+                        <CheckInDots followUp={f} label={`Day ${f.day} · ${f.daysCheckedIn} ${f.daysCheckedIn === 1 ? "day" : "days"} checked in${f.weightChangeLb !== null ? ` · weight ${f.weightChangeLb > 0 ? "+" : ""}${f.weightChangeLb} lb` : ""}`} />
+                        {f.flags.length > 0 && <ul className="followup-flags">{f.flags.map((flag, i) => <li className={`is-${flag.level}`} key={i}>{flag.text}</li>)}</ul>}
+                        <a className="followup-link" href={f.link} target="_blank" rel="noreferrer">Patient view</a>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+
               <section className="side-card checklist-card">
                 <div className="side-card-head">
                   <h3>Discharge checklist</h3>

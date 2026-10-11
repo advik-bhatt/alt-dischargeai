@@ -104,7 +104,7 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=<sumI
 
 | Method | Path | Who | What |
 | --- | --- | --- | --- |
-| GET | `/health` | anyone | clock, configuration source, and where each store points |
+| GET | `/health` | anyone | clock, configuration source, and where each store points; in hosted mode an anonymous caller gets only mode and capabilities, and the rest needs `x-provider-key` |
 | GET | `/patients` | provider | every patient, sorted by last then first name |
 | POST | `/patients` | provider | register `{ ID, DOB, ... }`, or match an existing patient; a different DOB answers `409` |
 | GET | `/patients/:id` | provider | one patient, with their active link once one exists |
@@ -115,6 +115,9 @@ curl -s -w ' HTTP %{http_code}\n' "http://localhost:4000/llm-sumary?sum-id=<sumI
 | GET | `/p/:token` | patient | the same plan, by path |
 | GET | `/translation?lang=&sum_id=` | patient | the plan in `es`, `zh` or `ar` from the AI-Infra translator when `TRANSLATION_PROVIDER=ai-infra`, cached per plan; `501` otherwise. `/translate` is the earlier spelling |
 | POST | `/chat` | patient | `{ token, question, history }`: answers a question about this patient's plan with the AI-Infra chatbot (`CHAT_PROVIDER=ai-infra`; `501` otherwise). Emergencies get 911/988 at once, "should I take X" is decided from the plan's medicine lists, and anything the plan doesn't say gets "call your nurse or doctor". The question is not stored |
+| POST | `/checkin` | patient | `{ token, meds, urgentSigns, callDoctorSigns, weightLb?, teachBack?, by? }`: today's check-in on the plan. Returns its flags (rules in `src/routes/checkins.ts`, no model) and the follow-up so far. Stored on the summary item, so the purge deletes it; the audit log keeps only the day and the rule codes |
+| GET | `/checkins?sum_id=` | patient | this plan's check-ins and follow-up: day of 30, days checked in, current flags |
+| GET | `/followups` | provider | every live plan's follow-up for the dashboard, urgent first |
 | POST | `/read-aloud` | patient | ElevenLabs audio of a displayed plan section when `ELEVENLABS_API_KEY` is set |
 | POST | `/auth/login`, `/auth/link` | anyone | the web app's sign-in: doctor email and password (local runner and hosted mode only; `501` here), and patient or caregiver link plus date of birth |
 | GET | `/docs`, `/openapi.json` | anyone | Swagger UI and the OpenAPI 3.0.3 spec |
@@ -129,6 +132,8 @@ Every record carries an `expiresAt` 30 days after creation, enforced in four lay
 2. The purge job (every `PURGE_INTERVAL_MS`, or once with `npm run sweep`) deletes the summary item and its PDF or audio and writes a deletion receipt for each. `npm run show-audit -- --receipts` prints them.
 3. DynamoDB TTL on `expiresAt` and the S3 lifecycle rules delete anything left on AWS.
 4. A backstop sweep inside the purge job catches any expired item the per-link pass missed.
+
+Daily check-ins live on the summary item (`checkins`), so every layer above deletes them with the plan.
 
 Receipts record what was deleted, when, and by what mechanism, and they outlive the data. No patient data goes into logs (redacted; logs carry an 8-character hash of the `sumId`), the audit log, receipts, or error bodies. Uploaded PDFs and audio are written to S3 with server-side encryption.
 
@@ -185,6 +190,7 @@ Scripts: `dev`, `start`, `start:hosted` (the hosted server; see the root README)
 | Purge and receipts | `src/pipeline/purge.ts`, `src/audit/receipts.ts`, `scripts/sweep.ts` |
 | Provider auth | `src/middleware/providerAuth.ts` |
 | Configuration from Secrets Manager | `src/secrets.ts`, `src/bootstrap.ts` |
+| 30-day check-ins and follow-up board | `src/routes/checkins.ts`, `../frontend/src/CheckIn.tsx`, `../frontend/src/DoctorDashboard.tsx` |
 | Patient chat | `src/routes/chat.ts`, `src/pipeline/chat.ts`, `../AI-Infra/patient_agents/chat_bridge.py`, `../frontend/src/PlanChat.tsx` |
 | Translation, read-aloud, live dictation | `src/pipeline/translation.ts`, `src/pipeline/readAloud.ts`, `src/pipeline/liveDictation.ts`, `src/dictationSocket.ts` |
 | Web app sign-in | `src/routes/auth.ts` |
@@ -198,4 +204,6 @@ Scripts: `dev`, `start`, `start:hosted` (the hosted server; see the root README)
 - If the email fails after the plan was saved, the job is marked failed even though the plan is stored.
 - Dictated audio through Transcribe Medical hasn't been run end to end.
 - Email prints to the console until an SES or SMTP sender is configured.
+- Check-in flags appear on the dashboard (refreshed every 30 seconds) but notify no one: nobody is paged or emailed. The patient page says check-ins are not watched around the clock.
+- The weight-gain thresholds (2 lb in a day, 5 lb in a week) are fixed, not the per-patient threshold a clinician sets.
 - Provider auth is a single shared key. Doctor email sign-in exists only in the local runner and the hosted mode.

@@ -40,6 +40,31 @@ export interface SummaryItem {
   audioKey?: string;
   meta?: SummaryMeta;
   translations?: Record<string, import("../pipeline/translation.js").TranslationResult>;
+  /** The patient's daily check-ins (routes/checkins.ts), oldest first. Purged with the item. */
+  checkins?: CheckIn[];
+}
+
+export interface CheckInFlag {
+  level: "urgent" | "attention";
+  code: string;
+  /** For the care team, in English. */
+  text: string;
+}
+
+export interface CheckIn {
+  at: string;
+  /** Day of the plan: 1 is the day it was created. */
+  day: number;
+  by: "patient" | "caregiver";
+  language: string;
+  meds: "all" | "some" | "none" | "no_meds";
+  /** Lines from the plan's get-help-now list the patient picked. */
+  urgentSigns: string[];
+  /** Lines from the plan's call-your-doctor list the patient picked. */
+  callDoctorSigns: string[];
+  weightLb?: number;
+  teachBack?: { medicine: string; correct: boolean };
+  flags: CheckInFlag[];
 }
 
 /** Top-level attributes a caller may set after creation (the agent response, status, metadata). */

@@ -132,6 +132,15 @@ test("every OpenAPI operation is checked against real HTTP routes and SQL reposi
       await call(`/p/${text.sumId}`, 200);
       assert.ok((await h.ctx.audit.listForLink(text.sumId)).some(event => event.event === "summary.viewed"));
     });
+    await t.test("check-ins are recorded on the link and reach the provider's follow-up board", async () => {
+      await call("/checkin", 400, post({ token: "invalid", meds: "all" })); await call("/checkin", 404, post({ token: newSumId(), meds: "all" }));
+      const recorded = await call("/checkin", 201, post({ token: text.sumId, meds: "none" }));
+      assert.deepEqual(recorded.checkin.flags.map((f: { code: string }) => f.code), ["missed_all_meds"]);
+      assert.equal((await call(`/checkins?sum_id=${text.sumId}`, 200)).checkins.length, 1);
+      await call("/checkins?sum_id=invalid", 400);
+      assert.equal((await call("/followups", 401)).error, "provider_key_required");
+      assert.equal((await call("/followups", 200, { headers })).followups.find((f: { sumId: string }) => f.sumId === text.sumId).level, "attention");
+    });
     await t.test("link login checks DOB, both roles, malformed bodies and unknown tokens", async () => {
       await call("/auth/link", 400, post({ token: text.sumId, dob: "not-a-date", role: "patient" }));
       await call("/auth/link", 400, post({ token: text.sumId, dob: "2000-01-01", role: "doctor" }));

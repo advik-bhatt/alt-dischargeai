@@ -3,6 +3,7 @@ import type { Db } from "../index.js";
 export type AuditActor = "provider" | "patient" | "system";
 
 export type AuditEvent =
+  | "checkin.recorded"
   | "patient.created"
   | "patient.matched"
   | "link.appended"
