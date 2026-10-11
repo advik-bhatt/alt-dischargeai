@@ -92,7 +92,7 @@ type Stat = { label: string; value: string; hint: string; highlight?: boolean }
 const stats: Stat[] = [
   { label: "Pending discharges", value: "7", hint: "+2 since yesterday" },
   { label: "Drafts in review", value: "4", hint: "2 awaiting sign-off" },
-  { label: "Sent today", value: "12", hint: "+18% vs. avg", highlight: true },
+  { label: "Sent today", value: "12", hint: "+18% vs. avg" },
   { label: "Avg. completion time", value: "6m", hint: "-1m this week" },
 ]
 
@@ -163,6 +163,7 @@ export function DoctorDashboard({
   // Map of patientId -> note so switching patients preserves each writeup
   const [notes, setNotes] = useState<Record<string, PatientNote>>({})
   const [selectedPatientId, setSelectedPatientId] = useState(patients[0].id)
+  const [searchQuery, setSearchQuery] = useState("")
   const [seconds, setSeconds] = useState(0)
   const [sending, setSending] = useState(false)
   const [checklist, setChecklist] = useState<ChecklistItem[]>(initialChecklist)
@@ -219,6 +220,16 @@ export function DoctorDashboard({
 
   const selectedPatient =
     patients.find((p) => p.id === selectedPatientId) ?? patients[0]
+
+  // Filter the sidebar patient list by the top-bar search (name or MRN)
+  const query = searchQuery.trim().toLowerCase()
+  const filteredPatients = query
+    ? patients.filter(
+        (p) =>
+          p.name.toLowerCase().includes(query) ||
+          p.mrn.toLowerCase().includes(query)
+      )
+    : patients
 
   const completedCount = checklist.filter((item) => item.done).length
   const checklistProgress = Math.round((completedCount / checklist.length) * 100)
@@ -300,14 +311,18 @@ export function DoctorDashboard({
               <Icon name="patients" size={16} />
               <span>Patients</span>
             </div>
-            {patients.map((patient) => (
-              <PatientNavItem
-                active={patient.id === selectedPatientId}
-                key={patient.id}
-                onSelect={() => handleSelectPatient(patient.id)}
-                patient={patient}
-              />
-            ))}
+            {filteredPatients.length > 0 ? (
+              filteredPatients.map((patient) => (
+                <PatientNavItem
+                  active={patient.id === selectedPatientId}
+                  key={patient.id}
+                  onSelect={() => handleSelectPatient(patient.id)}
+                  patient={patient}
+                />
+              ))
+            ) : (
+              <p className="nav-empty">No patients match "{searchQuery.trim()}"</p>
+            )}
           </nav>
         </div>
 
@@ -337,7 +352,13 @@ export function DoctorDashboard({
           </div>
           <label className="search">
             <Icon name="search" size={18} />
-            <input aria-label="Search patients" placeholder="Search patients" />
+            <input
+              aria-label="Search patients"
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patients"
+              type="search"
+              value={searchQuery}
+            />
           </label>
           <button aria-label="Notifications" className="icon-button" type="button">
             <Icon name="bell" size={19} />

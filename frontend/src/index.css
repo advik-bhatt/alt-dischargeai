@@ -157,6 +157,14 @@ button {
   white-space: nowrap;
 }
 
+.nav-empty {
+  margin: 2px 0 0;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .nav-item {
   display: flex;
   width: 100%;
