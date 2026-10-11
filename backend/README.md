@@ -14,6 +14,17 @@ cd backend && npm install && npm run dev
 
 Node 24 (`.nvmrc`; `engines` is `>=24`). The server runs on the team's AWS account and has no local stand-ins: with AWS credentials in the shell (or an instance role on the team's EC2 box) it reads the team secret at boot and uses MariaDB on RDS, DynamoDB, S3, Bedrock and Transcribe Medical. Swagger docs are at `http://localhost:4000/docs` (the raw spec at `/openapi.json`, both read from `openapi.yaml`); `npm run docs` also writes a standalone copy to `docs/swagger.html` that opens from disk (needs internet for Swagger UI; "Try it out" works only on the live `/docs`), and `npm run docs` rebuilds it after `openapi.yaml` changes.
 
+What you must set: AWS credentials in the terminal that starts the server, and nothing else. The standard chain is used, so a profile or an instance role works too; with the temporary keys of the hackathon role:
+
+```sh
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...      # only with temporary credentials; they expire
+export AWS_REGION=us-west-2       # optional: this is the default (AWS_DEFAULT_REGION works too)
+```
+
+Those credentials let the server read `hackhealth/secret`, which supplies the RDS host, user and password and the DynamoDB table name and key, and they are what DynamoDB, S3, Bedrock and Transcribe use afterwards (the role needs the permissions under "Team infrastructure"). Every other variable below has a default. `DATABASE_URL` replaces the RDS values from the secret when the secret is out of reach, but DynamoDB, S3 and Bedrock still need the credentials. Change `PROVIDER_API_KEY` from its development default before anyone else can reach the server.
+
 Patients come from the team's own table, `patientinfo` in the `dischargeai` database on RDS (the table `feature/infra-setup` reads with `SELECT * FROM patientinfo`). The backend only reads it and never adds a row. At startup it looks up the table's real column names and maps them to the nine `GET /patients` keys, ignoring case and underscores; the log line `patients table` shows the mapping, names only. The id column may be called `ID`, `patientID` or `uid`. The team's table on RDS has `uid, firstName, lastName, DOB, zipCode, phoneNumber, email, caregiverEmail` and no `caregiverName`, so `ID` is the `uid` value and `caregiverName` is `null`; a key whose column the table lacks is always `null`. If the table is missing or has no id column, startup stops and prints the columns it found.
 
 RDS port 3306 must be reachable from where the server runs: outside the VPC it exits with `connect ETIMEDOUT`. See "Team infrastructure".

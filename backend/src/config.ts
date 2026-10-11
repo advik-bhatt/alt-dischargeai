@@ -27,7 +27,6 @@ const optionalString = z
   .transform((v) => (v === undefined || v.trim() === "" ? undefined : v.trim()));
 
 export const ConfigSchema = z.object({
-  NODE_ENV: z.string().default("development"),
   PORT: int(4000),
   HOST: z.string().default("0.0.0.0"),
   LOG_LEVEL: z.string().default("info"),
