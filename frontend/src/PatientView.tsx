@@ -3,6 +3,7 @@ import { Icon, BrandMark } from "./ui"
 import { type Session } from "./auth"
 import { useChecklist } from "./checklist"
 import {
+  mockDischargeByPatient,
   type CheckItem,
   type DischargePlan,
   type Language,
@@ -14,8 +15,6 @@ import { FontSizeControl } from "./FontSizeControl"
 import { useFontScale } from "./fontScale"
 import { DeletionTimer } from "./DeletionTimer"
 import { useReadAloud } from "./useReadAloud"
-import { useDischarge } from "./useDischarge"
-import { speechTextFor } from "./speechText"
 
 // ── Read Aloud ────────────────────────────────────────────────────────────────
 
@@ -126,7 +125,7 @@ export function PatientView({
 }) {
   const [language, setLanguage] = useState<Language>("en")
   const { step, scale, setFontStep, decrease, increase } = useFontScale()
-  const { speak, stop, state, error: speechError, audioRef } = useReadAloud(session.patientToken)
+  const { speak, stop, state } = useReadAloud()
   const [activeText, setActiveText] = useState("")
 
   const handleSpeak = (text: string, lang = "en-US") => {
@@ -151,12 +150,13 @@ export function PatientView({
 
   // TODO: replace with real backend call — GET /p/:token returns the
   // discharge plan keyed by language (plus expiresAt) for the patient.
-  const { value, error, loading } = useDischarge(session.patientToken, language)
-  const record = value?.record
+  const record = session.patientId
+    ? mockDischargeByPatient[session.patientId]
+    : undefined
   const plan = record?.byLang[language]
   const isRtl = language === "ar"
 
-  const { isChecked, toggle, progressFor } = useChecklist(session.patientToken)
+  const { isChecked, toggle, progressFor } = useChecklist(session.patientId)
 
   return (
     <div className="role-shell patient-shell">
@@ -192,11 +192,11 @@ export function PatientView({
           <p className="patient-lede">{t(language, "patientLede")}</p>
 
           {record ? (
-            <DeletionTimer createdAt={record.createdAt} expiresAt={record.expiresAt} language={language} />
+            <DeletionTimer createdAt={record.createdAt} language={language} />
           ) : null}
 
           <div className="patient-controls">
-            <LanguagePicker language={language} onChange={value => { stop(); setLanguage(value) }} />
+            <LanguagePicker language={language} onChange={setLanguage} />
             <FontSizeControl
               language={language}
               step={step}
@@ -207,14 +207,9 @@ export function PatientView({
           </div>
         </div>
 
-        {value?.flags.map((flag, i) => <p className="auth-notice" role="status" key={i}>{flag}</p>)}
-        {speechError && <p className="auth-notice" role="alert">{speechError}</p>}
-        {state === "loading" && <p className="auth-notice" role="status">Preparing audio… Playback will start when it is ready.</p>}
-        <audio ref={audioRef} controls hidden={state === "idle" || state === "loading"} aria-label="Patient plan audio" />
-        {value?.status && <p className="heading-support">Review status: {value.status}</p>}
         {!plan ? (
           <section className="patient-section" aria-live="polite">
-            {error ? <p role="alert">{error}</p> : <p style={{ whiteSpace: "pre-wrap" }}>{loading ? "Loading your plan…" : value?.summary || t(language, "planUnavailable")}</p>}
+            <p>{t(language, "planUnavailable")}</p>
           </section>
         ) : (
           <PatientPlan
@@ -255,9 +250,61 @@ function PatientPlan({
   activeText: string
 }) {
   // Progress across every trackable medication dose item (checkbox meds only).
+  const medIds = plan.medications.groups
+    .flatMap((g) => g.items)
+    .filter((m) => m.trackable)
+    .map((m) => m.id)
+  const medProgress = progressFor(medIds)
 
   // ── Read-aloud text builders ──────────────────────────────────────────────
-  const { medsText, newMedsText, stoppedMedsText, todosText, generalText, warningText, whyText } = speechTextFor(plan, language)
+  const medsText = [
+    t(language, "medicationsTitle") + ". " + plan.medications.intro,
+    ...plan.medications.groups.flatMap((grp) => [
+      grp.label + ".",
+      ...grp.items.map((m) => `${m.name}: ${m.reason}${m.flag ? ", " + m.flag : ""}.`),
+    ]),
+  ].join(" ")
+
+  const newMedsText = plan.newMedicines.length
+    ? [
+        t(language, "newMedicinesTitle") + ".",
+        ...plan.newMedicines.map((m) => `${m.name}. ${m.detail}`),
+      ].join(" ")
+    : ""
+
+  const stoppedMedsText = plan.stoppedMedicines.length
+    ? [
+        t(language, "stoppedMedicinesTitle") + ".",
+        ...plan.stoppedMedicines.map((m) => `${m.name}. ${m.detail}`),
+      ].join(" ")
+    : ""
+
+  const todosText = [
+    t(language, "todosTitle") + ".",
+    t(language, "labsTitle") + ".",
+    ...(plan.todos.labs.length
+      ? plan.todos.labs.map((i) => `${i.label}${i.detail ? ". " + i.detail : ""}.`)
+      : [t(language, "labsEmpty")]),
+    t(language, "appointmentsTitle") + ".",
+    ...plan.todos.appointments.map((i) => `${i.label}${i.detail ? ". " + i.detail : ""}.`),
+    ...(plan.todos.appointmentsNote ? [plan.todos.appointmentsNote] : []),
+    t(language, "careInstructionsTitle") + ".",
+    ...plan.todos.careInstructions.map((i) => `${i.label}${i.detail ? ". " + i.detail : ""}.`),
+  ].join(" ")
+
+  const generalText = plan.generalInstructions.length
+    ? [t(language, "generalInstructionsTitle") + ".", ...plan.generalInstructions].join(" ")
+    : ""
+
+  const warningText = [
+    plan.warningSigns.heading,
+    ...plan.warningSigns.signs.map((s) => s + "."),
+    plan.warningSigns.emergencyLine,
+  ].join(" ")
+
+  const whyText = plan.whyHospitalized.length
+    ? [t(language, "whyHospitalizedTitle") + ".", ...plan.whyHospitalized].join(" ")
+    : ""
 
   return (
     <>

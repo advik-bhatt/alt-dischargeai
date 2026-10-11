@@ -2,13 +2,13 @@ import { Icon, BrandMark } from "./ui"
 import { type Session } from "./auth"
 import { useChecklist } from "./checklist"
 import {
+  mockDischargeByPatient,
   type CheckItem,
   type DischargePlan,
   type MedItem,
 } from "./data"
 import { t } from "./i18n"
 import { DeletionTimer } from "./DeletionTimer"
-import { useDischarge } from "./useDischarge"
 
 // Caregiver chrome renders in English (the task explicitly allows defaulting
 // the caregiver view to en, as long as nothing is half-translated). Routing
@@ -48,13 +48,13 @@ export function CaregiverView({
   session: Session
   onLogout: () => void
 }) {
+  const patientId = session.caregiverPatientIds?.[0]
   // TODO: replace with real backend call — GET /p/:token (caregiver-scoped),
   // including expiresAt for the deletion countdown.
-  const { value, error, loading } = useDischarge(session.patientToken)
-  const record = value?.record
+  const record = patientId ? mockDischargeByPatient[patientId] : undefined
   const plan = record?.byLang.en
 
-  const { isChecked, toggle, progressFor } = useChecklist(session.patientToken)
+  const { isChecked, toggle, progressFor } = useChecklist(patientId)
 
   return (
     <div className="role-shell caregiver-shell">
@@ -83,15 +83,13 @@ export function CaregiverView({
           <h1>{plan ? plan.title : t(CG, "caregiverPlanFallback")}</h1>
           <p className="heading-support">{t(CG, "caregiverLede")}</p>
           {record ? (
-            <DeletionTimer createdAt={record.createdAt} expiresAt={record.expiresAt} language={CG} />
+            <DeletionTimer createdAt={record.createdAt} language={CG} />
           ) : null}
         </div>
 
-        {value?.flags.map((flag, i) => <p className="auth-notice" role="status" key={i}>{flag}</p>)}
-        {value?.status && <p className="heading-support">Review status: {value.status}</p>}
         {!plan ? (
           <section className="side-card" aria-live="polite">
-            {error ? <p role="alert">{error}</p> : <p style={{ whiteSpace: "pre-wrap" }}>{loading ? "Loading the plan…" : value?.summary || t(CG, "caregiverNoPatient")}</p>}
+            <p>{t(CG, "caregiverNoPatient")}</p>
           </section>
         ) : (
           <CaregiverPlan

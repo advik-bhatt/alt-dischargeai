@@ -1,59 +1,108 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getReadAloud } from "./api"
 
-export type ReadAloudState = "idle" | "loading" | "speaking" | "paused"
-export function useReadAloud(token?: string) {
+export type ReadAloudState = "idle" | "speaking" | "paused"
+
+/**
+ * Finds the best available SpeechSynthesisVoice for a BCP-47 lang tag.
+ * Priority:
+ *   1. Exact match on lang (e.g. "zh-CN")
+ *   2. Same base language (e.g. any "zh-*" voice)
+ *   3. null — browser picks its default
+ */
+function findVoice(lang: string): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices()
+  if (!voices.length) return null
+
+  const base = lang.split("-")[0].toLowerCase()
+
+  // 1. Exact match
+  const exact = voices.find(
+    (v) => v.lang.toLowerCase() === lang.toLowerCase(),
+  )
+  if (exact) return exact
+
+  // 2. Same base language — prefer a local (non-network) voice if available
+  const sameBase = voices.filter((v) =>
+    v.lang.toLowerCase().startsWith(base),
+  )
+  if (sameBase.length) {
+    return sameBase.find((v) => !v.localService === false) ?? sameBase[0]
+  }
+
+  return null
+}
+
+/**
+ * Hook that wraps the Web Speech API SpeechSynthesis.
+ * Returns a speak function and the current state.
+ * Calling speak() while already speaking the same text cancels it (toggle).
+ */
+export function useReadAloud() {
   const [state, setState] = useState<ReadAloudState>("idle")
-  const [error, setError] = useState<string>()
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const controller = useRef<AbortController | undefined>(undefined)
-  const generation = useRef(0)
-  const stop = useCallback(() => {
-    generation.current++; controller.current?.abort(); audioRef.current?.pause(); setState("idle")
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  // voices load asynchronously — track them so findVoice works after load
+  const [, setVoicesLoaded] = useState(0)
+
+  useEffect(() => {
+    // Voices may already be available (Chrome) or load async (Safari/Firefox)
+    const onVoicesChanged = () => setVoicesLoaded((n) => n + 1)
+    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged)
+    // Trigger once in case voices are already loaded
+    if (window.speechSynthesis.getVoices().length) {
+      setVoicesLoaded((n) => n + 1)
+    }
+    return () => {
+      window.speechSynthesis.removeEventListener(
+        "voiceschanged",
+        onVoicesChanged,
+      )
+      window.speechSynthesis.cancel()
+    }
   }, [])
-  const speak = useCallback((text: string, lang = "en-US") => {
-    stop(); setError(undefined)
-    if (!token) { setError("Open a patient plan before reading it aloud"); return }
-    const version = generation.current
-    const abort = new AbortController(); controller.current = abort; setState("loading")
-    void (async () => {
-      // Bound requests to the provider's input size; never truncate a long section.
-      const chunks: string[] = []
-      let remaining = text.trim()
-      while (remaining.length) {
-        const cut = remaining.length > 4500 ? remaining.lastIndexOf(" ", 4500) : remaining.length
-        if (cut <= 0) throw new Error("Read-aloud section cannot be split safely")
-        chunks.push(remaining.slice(0, cut)); remaining = remaining.slice(cut).trimStart()
+
+  const stop = useCallback(() => {
+    window.speechSynthesis.cancel()
+    setState("idle")
+    utteranceRef.current = null
+  }, [])
+
+  const speak = useCallback(
+    (text: string, lang = "en-US") => {
+      if (!window.speechSynthesis) return
+
+      // Toggle off if already speaking
+      if (state === "speaking" || state === "paused") {
+        stop()
+        return
       }
-      for (const chunk of chunks) {
-        const blob = await getReadAloud(token, chunk, lang.split("-")[0], abort.signal)
-        if (generation.current !== version) return
-        const audio = audioRef.current
-        if (!audio) throw new Error("Audio player is unavailable. Refresh this page and try again.")
-        const url = URL.createObjectURL(blob); audio.src = url
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const cancelled = () => reject(new DOMException("Cancelled", "AbortError"))
-            abort.signal.addEventListener("abort", cancelled, { once: true })
-            audio.onended = () => { abort.signal.removeEventListener("abort", cancelled); resolve() }
-            audio.onerror = () => { abort.signal.removeEventListener("abort", cancelled); reject(new Error("Could not play generated audio")) }
-            audio.onplaying = () => { if (generation.current === version) { setError(undefined); setState("speaking") } }
-            audio.onpause = () => { if (generation.current === version && !audio.ended) setState("paused") }
-            void audio.play().catch(err => {
-              if (generation.current !== version || abort.signal.aborted) return
-              if (err instanceof DOMException && err.name === "NotAllowedError") {
-                setState("paused"); setError("Your browser blocked playback. Press Play in the audio player below.")
-              } else reject(err)
-            })
-          })
-        } finally {
-          audio.onended = null; audio.onerror = null; audio.onplaying = null; audio.onpause = null
-          audio.pause(); audio.removeAttribute("src"); audio.load(); URL.revokeObjectURL(url)
-        }
+
+      window.speechSynthesis.cancel()
+
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = lang
+      utterance.rate = 0.92
+      utterance.pitch = 1
+
+      // Explicitly assign a matching voice so the browser doesn't fall back
+      // to the OS default (which is almost always English)
+      const voice = findVoice(lang)
+      if (voice) utterance.voice = voice
+
+      utterance.onstart = () => setState("speaking")
+      utterance.onend = () => {
+        setState("idle")
+        utteranceRef.current = null
       }
-    })().catch(err => { if (!abort.signal.aborted) setError(err instanceof Error ? err.message : "Read-aloud failed") })
-      .finally(() => { if (generation.current === version) setState("idle") })
-  }, [token, stop])
-  useEffect(() => stop, [stop, token])
-  return { speak, stop, state, error, audioRef }
+      utterance.onerror = () => {
+        setState("idle")
+        utteranceRef.current = null
+      }
+
+      utteranceRef.current = utterance
+      window.speechSynthesis.speak(utterance)
+    },
+    [state, stop],
+  )
+
+  return { speak, stop, state }
 }
